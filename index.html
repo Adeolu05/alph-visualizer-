@@ -140,6 +140,7 @@ function spawnPerson(f, to, tx = {}) {
   p.whale = p.alph >= WHALE;
   if (p.whale) { p.hat = true; p.speed *= 0.7; announce(`🐋 A whale carrying ${fmt(p.alph)} ALPH has entered platform ${f}.`); }
   p.found = matches(p);
+  if (p.found) { lastAnnounce = 0; announce(`🎯 Your passenger just walked onto platform ${f}! Look for the green arrow.`); }
   people.push(p);
   return p;
 }
@@ -402,11 +403,68 @@ cv.addEventListener('click', e => {
   people.forEach(p => { if (p.state === 'board') return; const r = rows[p.f]; const d = Math.hypot(p.x - e.clientX, r.floor - 5 * u - e.clientY); if (d < bd) { bd = d; best = p; } });
   if (best) showTip(best, e.clientX, e.clientY); else tip.style.display = 'none';
 });
-document.getElementById('find').addEventListener('input', e => {
-  findQuery = e.target.value.trim();
+// Search: highlight matching passengers now, look the address/tx up on the explorer, and keep
+// watching so the next matching passenger gets the green arrow as they walk in.
+const findEl = document.getElementById('find');
+let findTimer = null, findSeq = 0;
+const ago = ms => { const s = Math.round((Date.now() - ms) / 1000); return s < 60 ? s + 's ago' : s < 3600 ? Math.round(s / 60) + 'm ago' : s < 86400 ? Math.round(s / 3600) + 'h ago' : Math.round(s / 86400) + 'd ago'; };
+function showPanel(html) {
+  tip.innerHTML = `<span class="x">✕</span>${html}`;
+  const r = findEl.getBoundingClientRect();
+  tip.style.display = 'block';
+  tip.style.left = Math.max(16, Math.min(r.left, W - 280)) + 'px'; tip.style.top = (r.bottom + 8) + 'px';
+  tip.querySelector('.x').onclick = () => tip.style.display = 'none';
+}
+// Net ALPH change for an address in one transaction.
+function netFor(tx, addr) {
+  const sum = xs => (xs || []).filter(o => o.address === addr).reduce((s, o) => s + atto(o.attoAlphAmount || '0'), 0);
+  return sum(tx.outputs) - sum(tx.inputs);
+}
+async function lookup(q, seq) {
+  const isTx = /^[0-9a-f]{64}$/i.test(q), isAddr = !isTx && /^[1-9A-HJ-NP-Za-km-z]{40,}$/.test(q);
+  if (!isTx && !isAddr) return;
+  if (mode !== 'live') {
+    showPanel(`🔎 <b>Watching for ${short(q)}</b><br>Can't reach the Alephium API right now (the station is in demo mode), so I can't look it up. I'll still highlight it if it shows up.`);
+    return;
+  }
+  showPanel(`🔎 Looking up ${short(q)}…`);
+  try {
+    if (isAddr) {
+      const [bal, txs] = await Promise.all([
+        getJSON(`/addresses/${q}/balance`),
+        getJSON(`/addresses/${q}/transactions?page=1&limit=5`),
+      ]);
+      if (seq !== findSeq) return;
+      const list = txs.map(tx => {
+        const n = netFor(tx, q);
+        return `<br>${n >= 0 ? '🟢 +' : '🔴 '}${fmt(Math.abs(n))} ALPH · ${ago(tx.timestamp)} · <a href="${EXPLORER}/transactions/${tx.hash}" target="_blank" rel="noopener">${short(tx.hash)}</a>`;
+      }).join('');
+      showPanel(`<b>Address ${short(q)}</b><br>Balance: <b>${fmt(atto(bal.balance))} ALPH</b>${atto(bal.lockedBalance) ? ` (${fmt(atto(bal.lockedBalance))} locked)` : ''}
+        <br><br><b>Recent trips</b>${list || '<br>No transactions yet.'}
+        <br><br>👀 Watching the gates: next time this address sends or receives, its passenger gets a green arrow.
+        <br><a href="${EXPLORER}/addresses/${q}" target="_blank" rel="noopener">open in explorer ↗</a>`);
+    } else {
+      const tx = await getJSON(`/transactions/${q}`);
+      if (seq !== findSeq) return;
+      const pending = tx.type === 'PendingTransaction' || !tx.blockHash;
+      showPanel(`<b>Transaction ${short(q)}</b><br>${pending ? '⏳ Waiting on the platform. Look for the green arrow!' : `✅ Already departed ${ago(tx.timestamp)} in block ${short(tx.blockHash)}`}
+        <br><a href="${EXPLORER}/transactions/${q}" target="_blank" rel="noopener">open in explorer ↗</a>`);
+    }
+  } catch (e) {
+    if (seq !== findSeq) return;
+    showPanel(`🔎 <b>${short(q)}</b><br>${String(e.message) === '404' ? 'Not found on Alephium mainnet. Check the address or tx ID.' : "Couldn't reach the explorer. Try again in a moment."}`);
+  }
+}
+findEl.addEventListener('input', () => {
+  findQuery = findEl.value.trim();
   let n = 0; people.forEach(p => { p.found = matches(p); if (p.found) n++; });
-  if (findQuery.length >= 4) announce(n ? `🔎 Found ${n} passenger${n > 1 ? 's' : ''} for you. Look for the green arrow.` : '🔎 Not on a platform yet. Watching the gates for you…');
+  if (n) { lastAnnounce = 0; announce(`🔎 Found ${n} passenger${n > 1 ? 's' : ''} for you. Look for the green arrow.`); }
+  if (!findQuery) tip.style.display = 'none';
+  clearTimeout(findTimer);
+  const seq = ++findSeq;
+  findTimer = setTimeout(() => lookup(findQuery, seq), 500);
 });
+findEl.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(findTimer); lookup(findQuery, ++findSeq); } });
 
 // ---- data: live mainnet, with demo fallback ----
 function renderBoard() {
