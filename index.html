@@ -96,6 +96,7 @@
 <div id="tip"></div>
 
 <script src="live-feed.js"></script>
+<script src="wraps/wraps.js"></script>
 <script>
 const API = 'https://backend.mainnet.alephium.org';
 const EXPLORER = 'https://explorer.alephium.org';
@@ -248,7 +249,7 @@ function enqueueTrain(b, riders = [], miner = null) {
   const alph = riders.reduce((s, r) => s + (r.alph || 0), 0);
   const failed = riders.filter(r => r.status === 'failed').length;
   const cars = Math.min(6, 2 + Math.floor(pax / 6));
-  const train = { f, to, pax, cars, failed, h: b.height, hash: b.fake ? null : b.hash, riders: riders.map(r => r.hash), alph, miner, x: W + 50, state: 'in', t: 0 };
+  const train = { wrap: pickWrap(b.height), f, to, pax, cars, failed, h: b.height, hash: b.fake ? null : b.hash, riders: riders.map(r => r.hash), alph, miner, x: W + 50, state: 'in', t: 0 };
   platforms[f].queue.push(train);
   departures.unshift({ f, to, h: b.height, pax, failed, hash: b.fake ? null : b.hash });
   departures.length = Math.min(departures.length, 7);
@@ -307,6 +308,25 @@ function board(tr) {
     if (p.found) announce(`✅ Your passenger ${short(p.hash)} boarded block #${tr.h}!`);
   });
 }
+// ---- train wraps (wraps/wraps.js): about 1 in 5 trains gets a design; 'special' ones only on round blocks ----
+const WRAP_CHANCE = 0.2;
+const wrapImages = {};
+const wrapsActive = (globalThis.WRAPS || []).filter(w => {
+  const today = new Date().toISOString().slice(0, 10);
+  return w.panels?.length && (!w.active?.from || w.active.from <= today) && (!w.active?.to || today <= w.active.to);
+});
+if (typeof Image !== 'undefined') wrapsActive.forEach(w => w.panels.forEach(f => {
+  const img = new Image(); img.src = 'wraps/' + f; wrapImages[f] = img;
+}));
+function pickWrap(height) {
+  const special = height % 10000 === 0 ? wrapsActive.filter(w => w.type === 'special') : [];
+  const pool = special.length ? special : Math.random() < WRAP_CHANCE ? wrapsActive.filter(w => w.type !== 'special') : [];
+  let r = Math.random() * pool.reduce((s, w) => s + (w.weight || 1), 0);
+  return pool.find(w => (r -= w.weight || 1) < 0) || null;
+}
+const safeLink = l => typeof l === 'string' && /^https:\/\/[^\s"'<>]+$/.test(l) ? l : null;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 function drawTrain(tr, row, t) {
   const rush = tr.pax >= 25;
   const ch = 15 * u, col = COLORS[tr.to];
@@ -316,6 +336,18 @@ function drawTrain(tr, row, t) {
   for (let c = 0; c < tr.cars; c++) {
     const x = Math.round(tr.x + c * (CAR() + 2 * u)), w = CAR();
     ctx.fillStyle = body; ctx.fillRect(x, y, w, ch);
+    const panel = tr.wrap && wrapImages[tr.wrap.panels[c % tr.wrap.panels.length]];
+    if (panel?.complete && panel.naturalWidth) {
+      // wrapped car: the artwork covers the whole side; only the door and wheels are drawn over it
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(panel, x, y, w, ch - u);
+      ctx.fillStyle = '#2a2e48'; ctx.fillRect(x, y + ch - u, w, u);
+      const open = tr.state === 'dwell' ? Math.min(1, tr.t / 250, (1300 - tr.t) / 250) : 0;
+      ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1; ctx.strokeRect(x + w / 2 - 2.5 * u, y + 2 * u, 5 * u, ch - 3 * u);
+      if (open > 0) { ctx.fillStyle = '#ffe89a'; ctx.fillRect(x + w / 2 - 2.5 * u * open, y + 2 * u, 5 * u * open, ch - 3 * u); }
+      ctx.fillStyle = '#111';
+      ctx.fillRect(x + 3 * u, row.track - u, 3 * u, 1.5 * u); ctx.fillRect(x + w - 6 * u, row.track - u, 3 * u, 1.5 * u);
+      continue;
+    }
     ctx.fillStyle = col; ctx.fillRect(x, y + ch * 0.62, w, 2 * u);
     ctx.fillStyle = '#2a2e48'; ctx.fillRect(x, y + ch - u, w, u);
     const filled = Math.ceil((tr.pax + 1) / tr.cars); // +1: the miner
@@ -488,6 +520,10 @@ function showTrainTip(tr, cx, cy) {
   tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[tr.to]}">${tr.pax ? '🚆 Train' : '⛏ Miner-only express'} #${tr.h}</b><br>
     Platform ${tr.f} → ${DEST[tr.to]} (G${tr.f}→G${tr.to})<br>${minerLine}<br>${tr.pax + 1} aboard: ⛏ 1 miner + ${tr.pax} passenger${tr.pax === 1 ? '' : 's'}${tr.alph ? ' · ' + fmt(tr.alph) + ' ALPH in outputs' + withUsd(tr.alph) : ''}<br>
     ${tr.failed ? `<span style="color:#ff7a7a">✕ ${tr.failed} transaction execution${tr.failed > 1 ? 's' : ''} failed</span><br>` : ''}
+    ${tr.wrap ? (() => {
+      const link = safeLink(tr.wrap.link), label = (tr.wrap.type === 'ad' ? '📢 Sponsored by ' : '🎨 Art by ') + esc(tr.wrap.credit || 'anonymous');
+      return (link ? `<a href="${link}" target="_blank" rel="noopener sponsored">${label} ↗</a>` : label) + '<br>';
+    })() : ''}
     ${tr.hash ? `<a href="${EXPLORER}/blocks/${tr.hash}" target="_blank" rel="noopener">open block in explorer ↗</a>` : '<i>Demo train. On live mainnet this links to the block.</i>'}`;
   tip.style.display = 'block';
   tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
