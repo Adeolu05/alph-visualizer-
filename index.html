@@ -14,29 +14,38 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="og.png">
 <style>
-  :root { --bg:#07080f; --panel:rgba(12,14,28,.86); --ink:#e8ecff; --dim:#8b93b8; --line:#262b50; }
+  :root { --bg:#07080f; --panel:rgba(12,14,28,.88); --ink:#e8ecff; --dim:#8b93b8; --line:#262b50; }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
     font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; overflow:hidden; }
-  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; image-rendering:pixelated; }
-  header { position:fixed; top:14px; left:16px; right:16px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
-  h1 { margin:0 auto 0 0; font-size:20px; letter-spacing:.04em; text-shadow:0 0 12px #8f7bff; }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:crosshair; }
+  header { position:fixed; top:14px; left:16px; right:16px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; pointer-events:none; }
+  header > * { pointer-events:auto; }
+  h1 { margin:0 auto 0 0; font-size:20px; letter-spacing:.04em; text-shadow:0 0 12px #8f7bff; pointer-events:none; }
   h1 small { display:block; font-size:12px; color:var(--dim); font-weight:normal; letter-spacing:0; text-shadow:none; }
   .badge { padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line);
-    background:var(--panel); white-space:nowrap; color:var(--ink); text-decoration:none; }
+    background:var(--panel); white-space:nowrap; color:var(--ink); text-decoration:none; font-family:inherit; cursor:pointer; }
   .badge.live { color:#5dffa8; } .badge.demo { color:#ffd25d; } .badge.retry { color:#ff7a7a; }
-  #board { position:fixed; right:16px; top:64px; width:290px; background:#0b0c12; border:2px solid #2b2f45;
+  #find { width:190px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); background:var(--panel);
+    color:var(--ink); font:inherit; font-size:12px; outline:none; }
+  #find:focus { border-color:#a08bff; }
+  #board { position:fixed; right:16px; top:64px; width:300px; background:#0b0c12; border:2px solid #2b2f45;
     border-radius:6px; padding:8px 10px; box-shadow:0 0 24px rgba(255,179,71,.12); }
   #board h2 { margin:0 0 4px; font-size:11px; color:#ffb347; letter-spacing:.18em; display:flex; justify-content:space-between; }
   #board table { width:100%; border-collapse:collapse; font-size:12px; color:#ffcf7a; }
   #board td { padding:1px 0; white-space:nowrap; } #board td:last-child { text-align:right; }
+  #ticker { margin-top:6px; padding-top:5px; border-top:1px dashed #2b2f45; color:#ffb347; font-size:11px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:opacity .3s; }
   .stats { position:fixed; left:16px; bottom:12px; display:flex; gap:6px; flex-wrap:wrap; }
   .stat { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 9px; }
   .stat b { font-size:15px; margin-right:4px; } .stat span { color:var(--dim); font-size:11px; }
+  #tip { position:fixed; display:none; z-index:5; background:var(--panel); border:1px solid #a08bff; border-radius:8px;
+    padding:8px 10px; font-size:12px; max-width:260px; box-shadow:0 6px 24px rgba(0,0,0,.5); }
+  #tip a { color:#5dd6ff; } #tip .x { float:right; cursor:pointer; color:var(--dim); margin-left:8px; }
   @media (max-width:700px) {
     #board { left:16px; right:16px; width:auto; top:auto; bottom:92px; }
     #board tr:nth-child(n+4) { display:none; }
-    h1 { font-size:16px; }
+    h1 { font-size:16px; } #find { width:150px; }
   }
 </style>
 </head>
@@ -44,25 +53,33 @@
 <canvas id="c"></canvas>
 <header>
   <h1>ℵ Central Station<small>Alephium, live. Every block is a train, every transaction a passenger.</small></h1>
-  <a class="badge" href="map.html">🗺 map view</a>
+  <input id="find" placeholder="🔎 find tx or address" autocomplete="off" spellcheck="false">
+  <button id="snd" class="badge" title="Station sounds">🔇</button>
+  <a class="badge" href="map.html">🗺 map</a>
   <span id="mode" class="badge demo">● DEMO</span>
 </header>
-<div id="board"><h2><span>DEPARTURES</span><span id="clock"></span></h2><table id="rows"></table></div>
+<div id="board"><h2><span>DEPARTURES</span><span id="clock"></span></h2><table id="rows"></table><div id="ticker">Welcome to ℵ Central. Mind the gap.</div></div>
 <div class="stats">
   <div class="stat"><b id="sBlocks">0</b><span>trains/min</span></div>
   <div class="stat"><b id="sTx">0</b><span>pax/min</span></div>
+  <div class="stat"><b id="sAlph">0</b><span>ALPH/min</span></div>
   <div class="stat"><b id="sWait">0</b><span>waiting</span></div>
   <div class="stat"><b id="sLast">–</b><span>last train</span></div>
 </div>
+<div id="tip"></div>
 
 <script>
 const API = 'https://backend.mainnet.alephium.org';
+const EXPLORER = 'https://explorer.alephium.org';
 const G = 4;
 const COLORS = ['#ff5d8f', '#5dd6ff', '#ffd25d', '#a08bff'];
 const DEST = ['Rose Quarter', 'Harbour', 'Old Town', 'Violet Hts'];
 const SKIN = ['#f1c7a5', '#d9a07a', '#a86b48', '#6e4630', '#f5d6b8'];
+const WHALE = 10000; // ALPH
 const rnd = n => Math.floor(Math.random() * n);
 const pick = a => a[rnd(a.length)];
+const fmt = n => n >= 1000 ? Math.round(n).toLocaleString('en') : n >= 10 ? n.toFixed(1) : n.toFixed(2);
+const short = h => h ? h.slice(0, 6) + '…' + h.slice(-4) : '';
 
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W, H, u, rows = [], skyline = [], stars = [];
@@ -71,20 +88,17 @@ function layout() {
   const dpr = devicePixelRatio || 1;
   W = innerWidth; H = innerHeight;
   cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.imageSmoothingEnabled = false;
   const mobile = W < 700;
-  const top = H * (mobile ? 0.22 : 0.3), bottom = H - (mobile ? 205 : 50);
+  const top = H * (mobile ? 0.24 : 0.3), bottom = H - (mobile ? 250 : 50);
   const rowH = (bottom - top) / G;
   u = Math.max(1.5, Math.min(4, rowH / 34));
   rows = [...Array(G)].map((_, i) => {
     const y0 = top + i * rowH;
     return { y0, h: rowH, floor: y0 + rowH * 0.55, track: y0 + rowH * 0.9 };
   });
-  // skyline buildings with fixed lit windows
   skyline = []; let x = 0;
   while (x < W) {
-    const w = 30 + rnd(70), h = 40 + rnd(top * 0.6);
-    const wins = [];
+    const w = 30 + rnd(70), h = 40 + rnd(top * 0.6), wins = [];
     for (let wy = 8; wy < h - 8; wy += 10) for (let wx = 6; wx < w - 6; wx += 9) if (Math.random() < 0.3) wins.push([wx, wy, Math.random()]);
     skyline.push({ x, w, h, wins }); x += w + 2;
   }
@@ -92,98 +106,164 @@ function layout() {
 }
 addEventListener('resize', layout); layout();
 
+// ---- time of day (viewer's local clock) ----
+function skyPalette() {
+  const h = new Date().getHours() + new Date().getMinutes() / 60;
+  if (h >= 7 && h < 17) return { top: '#2f6fd1', bot: '#9fd0ff', day: 1 };
+  if (h >= 5 && h < 7) return { top: '#2a1f5c', bot: '#ff9a6b', day: 0.5 };
+  if (h >= 17 && h < 20) return { top: '#24184f', bot: '#ff7a59', day: 0.5 };
+  return { top: '#05060d', bot: '#16123a', day: 0 };
+}
+
+// ---- particles & floating labels ----
+const particles = [], labels = [];
+function sparks(x, y, n) {
+  for (let i = 0; i < n; i++) particles.push({ x, y, vx: (Math.random() - 0.3) * 0.25, vy: -Math.random() * 0.25, life: 400 + rnd(300), c: pick(['#ffb347', '#ffe08a', '#ff7a3c']) });
+}
+function floatText(x, y, text, color) { labels.push({ x, y, text, color, life: 1600 }); }
+
 // ---- people ----
-// Each person waits on platform `f` for a train heading to `to`.
+// Each person waits on platform `f` for a train heading to `to`. Live passengers carry their real tx.
 const people = [];
-function spawnPerson(f, to) {
+let findQuery = '';
+function spawnPerson(f, to, tx = {}) {
+  if (tx.hash && people.some(p => p.hash === tx.hash)) return null;
   const onPlatform = people.filter(p => p.f === f && p.state !== 'board').length;
-  if (onPlatform >= 34) return false;
-  people.push({
-    f, to, x: -10 - rnd(40), tx: W * (0.12 + Math.random() * 0.62), state: 'walk',
-    speed: 0.035 + Math.random() * 0.03, skin: pick(SKIN), hat: Math.random() < 0.25,
+  if (onPlatform >= 34 && !tx.hash) return null;
+  const late = !!tx.late;
+  const p = {
+    f, to, hash: tx.hash, alph: tx.alph || 0, from: tx.from || '', dests: tx.dests || [], tokens: !!tx.tokens, contract: !!tx.contract,
+    x: late ? W + 10 : -10 - rnd(40), tx: W * (0.12 + Math.random() * 0.62), state: 'walk',
+    speed: late ? 0.16 : 0.035 + Math.random() * 0.03, skin: pick(SKIN), hat: Math.random() < 0.25,
     bag: Math.random() < 0.3, phase: Math.random() * 10, a: 1,
-  });
-  return true;
+  };
+  p.whale = p.alph >= WHALE;
+  if (p.whale) { p.hat = true; p.speed *= 0.7; announce(`🐋 A whale carrying ${fmt(p.alph)} ALPH has entered platform ${f}.`); }
+  p.found = matches(p);
+  people.push(p);
+  return p;
+}
+function matches(p) {
+  if (!findQuery || findQuery.length < 4) return false;
+  const q = findQuery.toLowerCase();
+  return [p.hash, p.from, ...p.dests].some(s => s && s.toLowerCase().startsWith(q));
 }
 function drawPerson(p, row, t) {
-  const s = u, x = Math.round(p.x), y = Math.round(row.floor);
-  const moving = p.state !== 'wait';
-  const step = moving ? Math.sin(t / 90 + p.phase) : 0;
+  const s = p.whale ? u * 1.6 : u, x = Math.round(p.x), y = Math.round(row.floor);
+  const step = p.state !== 'wait' ? Math.sin(t / (p.speed > 0.1 ? 45 : 90) + p.phase) : 0;
   ctx.globalAlpha = p.a;
-  // legs
+  if (p.found) { // glowing marker over a searched passenger
+    ctx.fillStyle = '#5dffa8'; const by = y - 15 * s + Math.sin(t / 150) * 2;
+    ctx.beginPath(); ctx.moveTo(x - 3 * u, by - 3 * u); ctx.lineTo(x + 3 * u, by - 3 * u); ctx.lineTo(x, by + u); ctx.fill();
+    ctx.shadowColor = '#5dffa8'; ctx.shadowBlur = 12;
+  }
   ctx.fillStyle = '#20223a';
   ctx.fillRect(x - s, y - 3 * s, s, 3 * s + (step > 0 ? 0 : -s * 0.5));
   ctx.fillRect(x + s * 0.2, y - 3 * s, s, 3 * s + (step > 0 ? -s * 0.5 : 0));
-  // body, coloured by destination
-  ctx.fillStyle = COLORS[p.to];
+  ctx.fillStyle = p.whale ? '#e9b949' : COLORS[p.to];
   ctx.fillRect(x - 1.5 * s, y - 7 * s, 3 * s, 4 * s);
-  if (p.bag) { ctx.fillStyle = '#7a5230'; ctx.fillRect(x + 1.5 * s, y - 5 * s, 1.5 * s, 2 * s); }
-  // head (idle people look around at their phones)
+  if (p.whale) { ctx.fillStyle = COLORS[p.to]; ctx.fillRect(x - 0.4 * s, y - 7 * s, 0.8 * s, 3 * s); } // tie
+  if (p.bag || p.tokens) { ctx.fillStyle = p.tokens ? '#5dffa8' : '#7a5230'; ctx.fillRect(x + 1.5 * s, y - 5 * s, 1.5 * s, 2 * s); }
   const bob = p.state === 'wait' ? Math.round(Math.sin(t / 700 + p.phase)) * s * 0.3 : 0;
   ctx.fillStyle = p.skin; ctx.fillRect(x - s, y - 9.5 * s + bob, 2 * s, 2.5 * s);
-  if (p.hat) { ctx.fillStyle = '#111'; ctx.fillRect(x - 1.3 * s, y - 10.3 * s + bob, 2.6 * s, s); }
-  if (p.state === 'wait' && p.phase > 7) { ctx.fillStyle = '#9fe3ff'; ctx.fillRect(x + s, y - 7 * s, s * 0.8, s * 1.2); }
-  ctx.globalAlpha = 1;
+  if (p.hat) { ctx.fillStyle = p.whale ? '#111' : '#222'; ctx.fillRect(x - 1.3 * s, y - 10.3 * s + bob, 2.6 * s, s); if (p.whale) ctx.fillRect(x - 0.9 * s, y - 12 * s + bob, 1.8 * s, 1.8 * s); }
+  if (p.state === 'wait' && p.phase > 7 && !p.whale) { ctx.fillStyle = '#9fe3ff'; ctx.fillRect(x + s, y - 7 * s, s * 0.8, s * 1.2); }
+  if (p.contract && p.state === 'wait') { // contract callers juggle little gears
+    ctx.fillStyle = '#ffd25d';
+    for (let k = 0; k < 2; k++) { const a = t / 200 + k * Math.PI; ctx.fillRect(x + Math.cos(a) * 2 * s - s / 2, y - 12 * s - Math.abs(Math.sin(a)) * 3 * s, s, s); }
+  }
+  ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  if (p.whale && p.state === 'wait') {
+    ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(3.2 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center';
+    ctx.fillText(`🐋 ${fmt(p.alph)}`, x, y - 15 * s);
+  }
+}
+
+// ---- pigeons: peck about, flap off when a train comes in ----
+const pigeons = [...Array(G)].map(() => [...Array(1 + rnd(3))].map(() => ({ x: Math.random() * 0.9, fly: 0, phase: Math.random() * 9 })));
+function drawPigeons(i, row, t) {
+  pigeons[i].forEach(b => {
+    if (b.fly > 0) { b.fly += 0.03; if (b.fly > 6) { b.fly = 0; b.x = Math.random() * 0.9; } }
+    const x = b.x * W + b.fly * 30 * u, y = row.floor - b.fly * 12 * u;
+    if (y < row.y0) return;
+    const peck = b.fly ? 0 : Math.max(0, Math.sin(t / 250 + b.phase)) * u;
+    ctx.fillStyle = '#9aa0b8'; ctx.fillRect(x, y - 2.5 * u, 3 * u, 2 * u);
+    ctx.fillRect(x + 2.5 * u, y - 3.5 * u + peck, 1.5 * u, 1.5 * u);
+    ctx.fillStyle = '#ffb347'; ctx.fillRect(x + 4 * u, y - 3 * u + peck, 0.7 * u, 0.5 * u);
+    if (b.fly) { ctx.fillStyle = '#c8cde0'; ctx.fillRect(x + 0.5 * u, y - 3.5 * u - Math.abs(Math.sin(t / 60)) * 2 * u, 2 * u, u); }
+  });
 }
 
 // ---- trains ----
-// One track per platform; trains queue if a platform is busy.
 const platforms = [...Array(G)].map(() => ({ train: null, queue: [] }));
 const CAR = () => 26 * u;
-function enqueueTrain(b) {
+let lastBlockAt = 0;
+const departures = [], history = [];
+function enqueueTrain(b, riders = []) {
   const f = b.chainFrom, to = b.chainTo, pax = Math.max(0, (b.txNumber || 1) - 1); // minus coinbase
+  const alph = riders.reduce((s, r) => s + (r.alph || 0), 0);
   const cars = Math.min(6, 2 + Math.floor(pax / 6));
-  platforms[f].queue.push({ f, to, pax, cars, h: b.height, x: 0, state: 'in', t: 0 });
-  departures.unshift({ f, to, h: b.height, pax });
+  platforms[f].queue.push({ f, to, pax, cars, h: b.height, hash: b.hash, riders: riders.map(r => r.hash), alph, x: W + 50, state: 'in', t: 0 });
+  departures.unshift({ f, to, h: b.height, pax, hash: b.hash });
   departures.length = Math.min(departures.length, 7);
-  history.push({ at: Date.now(), pax }); lastBlockAt = Date.now();
+  history.push({ at: Date.now(), pax, alph }); lastBlockAt = Date.now();
   renderBoard();
 }
 function trainLen(tr) { return tr.cars * (CAR() + 2 * u); }
 function stepTrains(dt) {
   platforms.forEach((pl, f) => {
-    if (!pl.train && pl.queue.length) { pl.train = pl.queue.shift(); }
+    if (!pl.train && pl.queue.length) {
+      pl.train = pl.queue.shift();
+      const tr = pl.train;
+      pigeons[f].forEach(b => { if (!b.fly) b.fly = 0.01; });
+      if (tr.pax === 0) announce(`👻 Platform ${f}: the ghost train to ${DEST[tr.to]} is not in service.`);
+      else if (tr.pax >= 25) announce(`🚨 Rush hour! ${tr.pax} passengers boarding at platform ${f}.`);
+      else if (Math.random() < 0.25) announce(`Now arriving at platform ${f}: block #${tr.h} to ${DEST[tr.to]}.`);
+      chime(f);
+    }
     const tr = pl.train; if (!tr) return;
     const rush = Math.min(3, 1 + pl.queue.length * 0.6); // hurry when the platform is backed up
-    const stopX = W * 0.08, len = trainLen(tr);
+    const stopX = W * 0.08, len = trainLen(tr), row = rows[f];
     tr.t += dt * rush;
     if (tr.state === 'in') {
-      const d = 900, k = Math.min(1, tr.t / d), e = 1 - Math.pow(1 - k, 3);
+      const d = 1000, k = Math.min(1, tr.t / d), e = 1 - Math.pow(1 - k, 3);
       tr.x = W + 20 + (stopX - W - 20) * e;
+      if (k > 0.55 && k < 0.95 && Math.random() < 0.6) sparks(tr.x + 4 * u + rnd(len), row.track, 1); // braking sparks
       if (k >= 1) { tr.state = 'dwell'; tr.t = 0; board(tr); }
     } else if (tr.state === 'dwell') {
       tr.x = stopX;
-      if (tr.t > 1100) { tr.state = 'out'; tr.t = 0; }
+      if (tr.t > 1300) { tr.state = 'out'; tr.t = 0; }
     } else {
-      const d = 900, k = Math.min(1, tr.t / d), e = k * k * k;
+      const d = 1000, k = Math.min(1, tr.t / d), e = k * k * k;
       tr.x = stopX + (-len - 40 - stopX) * e;
       if (k >= 1) pl.train = null;
     }
   });
 }
-function doors(tr) {
-  return [...Array(tr.cars)].map((_, c) => tr.x + c * (CAR() + 2 * u) + CAR() / 2);
-}
+function doors(tr) { return [...Array(tr.cars)].map((_, c) => tr.x + c * (CAR() + 2 * u) + CAR() / 2); }
 function board(tr) {
-  const ds = doors(tr);
-  const waitingHere = people.filter(p => p.f === tr.f && p.to === tr.to && p.state !== 'board');
-  waitingHere.slice(0, tr.pax).forEach(p => {
-    p.state = 'board';
+  const ds = doors(tr), here = people.filter(p => p.f === tr.f && p.state !== 'board');
+  // Live: the exact passengers whose tx is in this block. Otherwise anyone heading the same way.
+  let riders = here.filter(p => p.hash && tr.riders.includes(p.hash));
+  if (riders.length < tr.pax) riders = riders.concat(here.filter(p => !riders.includes(p) && !p.hash && p.to === tr.to).slice(0, tr.pax - riders.length));
+  riders.forEach(p => {
+    p.state = 'board'; p.speed = 0.09;
     p.tx = ds.reduce((best, d) => Math.abs(d - p.x) < Math.abs(best - p.x) ? d : best, ds[0]);
-    p.speed = 0.09;
+    if (p.found) announce(`✅ Your passenger ${short(p.hash)} boarded block #${tr.h}!`);
   });
 }
 function drawTrain(tr, row, t) {
   const ghost = tr.pax === 0, rush = tr.pax >= 25;
-  const ch = 15 * u, y = row.track - ch - u, col = COLORS[tr.to];
+  const ch = 15 * u, col = COLORS[tr.to];
+  const sway = tr.state === 'dwell' ? 0 : Math.round(Math.sin(t / 40) * 0.4 * u);
+  const y = row.track - ch - u + sway;
   ctx.globalAlpha = ghost ? 0.35 + Math.sin(t / 150) * 0.1 : 1;
+  const body = ghost ? '#cfd6ff' : rush ? '#e9b949' : '#d9dcea';
   for (let c = 0; c < tr.cars; c++) {
     const x = Math.round(tr.x + c * (CAR() + 2 * u)), w = CAR();
-    ctx.fillStyle = ghost ? '#cfd6ff' : rush ? '#e9b949' : '#d9dcea';
-    ctx.fillRect(x, y, w, ch);
-    ctx.fillStyle = col; ctx.fillRect(x, y + ch * 0.62, w, 2 * u);            // livery stripe
-    ctx.fillStyle = '#2a2e48'; ctx.fillRect(x, y + ch - u, w, u);              // skirt
-    // windows; lit, with silhouettes of passengers who boarded
+    ctx.fillStyle = body; ctx.fillRect(x, y, w, ch);
+    ctx.fillStyle = col; ctx.fillRect(x, y + ch * 0.62, w, 2 * u);
+    ctx.fillStyle = '#2a2e48'; ctx.fillRect(x, y + ch - u, w, u);
     const filled = Math.ceil(tr.pax / tr.cars);
     for (let wi = 0; wi < 4; wi++) {
       const wx = x + 2 * u + wi * 6 * u;
@@ -191,46 +271,55 @@ function drawTrain(tr, row, t) {
       ctx.fillRect(wx, y + 2.5 * u, 4.5 * u, 4.5 * u);
       if (!ghost && wi < filled) { ctx.fillStyle = '#3a3150'; ctx.fillRect(wx + 1.5 * u, y + 4 * u, 1.6 * u, 3 * u); }
     }
-    // door: opens during dwell
-    const open = tr.state === 'dwell' ? Math.min(1, tr.t / 250) : 0;
+    const open = tr.state === 'dwell' ? Math.min(1, tr.t / 250, (1300 - tr.t) / 250) : 0;
     ctx.fillStyle = '#4b5070'; ctx.fillRect(x + w / 2 - 2.5 * u, y + 2 * u, 5 * u, ch - 3 * u);
-    if (open) { ctx.fillStyle = '#ffe89a'; ctx.fillRect(x + w / 2 - 2.5 * u * open, y + 2 * u, 5 * u * open, ch - 3 * u); }
-    // wheels
+    if (open > 0) { ctx.fillStyle = '#ffe89a'; ctx.fillRect(x + w / 2 - 2.5 * u * open, y + 2 * u, 5 * u * open, ch - 3 * u); }
     ctx.fillStyle = '#111';
     ctx.fillRect(x + 3 * u, row.track - u, 3 * u, 1.5 * u); ctx.fillRect(x + w - 6 * u, row.track - u, 3 * u, 1.5 * u);
   }
-  // nose + headlight + destination sign on the leading car
+  // pantograph on the roof
+  ctx.strokeStyle = '#555a78'; ctx.lineWidth = u * 0.6;
+  ctx.beginPath(); ctx.moveTo(tr.x + 8 * u, y); ctx.lineTo(tr.x + 12 * u, y - 3 * u); ctx.lineTo(tr.x + 16 * u, y); ctx.stroke();
   const nx = Math.round(tr.x);
-  ctx.fillStyle = ghost ? '#cfd6ff' : rush ? '#e9b949' : '#d9dcea';
+  ctx.fillStyle = body;
   ctx.beginPath(); ctx.moveTo(nx, y); ctx.lineTo(nx - 5 * u, y + ch * 0.55); ctx.lineTo(nx - 5 * u, y + ch); ctx.lineTo(nx, y + ch); ctx.fill();
   ctx.fillStyle = '#fff8c0'; ctx.fillRect(nx - 5 * u, y + ch * 0.6, 1.5 * u, 1.5 * u);
   if (tr.state !== 'dwell') { ctx.fillStyle = 'rgba(255,248,192,.12)'; ctx.beginPath(); ctx.moveTo(nx - 5 * u, y + ch * 0.65); ctx.lineTo(nx - 60 * u, y); ctx.lineTo(nx - 60 * u, row.track); ctx.fill(); }
-  ctx.fillStyle = '#111'; ctx.fillRect(nx + 2 * u, y - 5 * u, 22 * u, 4.5 * u);
+  ctx.fillStyle = '#111'; ctx.fillRect(nx + 2 * u, y - 5 * u, 24 * u, 4.5 * u);
   ctx.fillStyle = col; ctx.font = `bold ${Math.round(3.4 * u)}px ui-monospace,monospace`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText(ghost ? '👻 NOT IN SERVICE' : `→ ${DEST[tr.to]}`, nx + 3 * u, y - 2.7 * u);
+  ctx.fillText(ghost ? '👻 NOT IN SERVICE' : `#${tr.h} → ${DEST[tr.to]}`, nx + 3 * u, y - 2.7 * u);
   ctx.globalAlpha = 1;
-  if (rush && tr.state === 'dwell') {
-    ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(4 * u)}px ui-monospace,monospace`;
-    ctx.fillText(`RUSH HOUR · ${tr.pax} pax`, nx + 2 * u, y - 9 * u);
+  if (tr.state === 'dwell' && (rush || tr.alph >= 1)) {
+    ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(3.6 * u)}px ui-monospace,monospace`;
+    ctx.fillText(rush ? `RUSH HOUR · ${tr.pax} pax` : `${fmt(tr.alph)} ALPH aboard`, nx + 3 * u, y - 9 * u);
   }
 }
 
 // ---- scenery ----
+let weather = { rain: 0, until: 0 }, shooting = null;
 function drawSky(t) {
-  const top = rows[0].y0;
+  const top = rows[0].y0, pal = skyPalette();
   const g = ctx.createLinearGradient(0, 0, 0, top);
-  g.addColorStop(0, '#05060d'); g.addColorStop(1, '#16123a');
+  g.addColorStop(0, pal.top); g.addColorStop(1, pal.bot);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, top);
-  stars.forEach(([x, y, s]) => { ctx.fillStyle = `rgba(255,255,255,${0.3 + 0.5 * Math.abs(Math.sin(t / 900 + s * 9))})`; ctx.fillRect(x, y, 1.5, 1.5); });
-  ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(W * 0.82, top * 0.3, Math.min(22, top * 0.12), 0, 7); ctx.fill();
+  if (pal.day < 1) {
+    stars.forEach(([x, y, s]) => { ctx.fillStyle = `rgba(255,255,255,${(1 - pal.day) * (0.3 + 0.5 * Math.abs(Math.sin(t / 900 + s * 9)))})`; ctx.fillRect(x, y, 1.5, 1.5); });
+    if (!shooting && Math.random() < 0.002) shooting = { x: Math.random() * W, y: Math.random() * top * 0.4, life: 1 };
+    if (shooting) {
+      ctx.strokeStyle = `rgba(255,255,255,${shooting.life})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(shooting.x, shooting.y); ctx.lineTo(shooting.x - 40, shooting.y - 15); ctx.stroke();
+      shooting.x += 6; shooting.y += 2.2; shooting.life -= 0.03; if (shooting.life <= 0) shooting = null;
+    }
+  }
+  ctx.fillStyle = pal.day === 1 ? '#fff4b0' : '#fff6d8';
+  ctx.beginPath(); ctx.arc(W * 0.82, top * 0.3, Math.min(22, top * 0.12), 0, 7); ctx.fill();
   skyline.forEach(b => {
     const by = top - b.h;
-    ctx.fillStyle = '#0d0f1f'; ctx.fillRect(b.x, by, b.w, b.h);
-    b.wins.forEach(([wx, wy, s]) => { ctx.fillStyle = s > 0.85 ? '#a08bff' : '#ffd98a'; ctx.globalAlpha = 0.5 + 0.3 * s; ctx.fillRect(b.x + wx, by + wy, 4, 5); });
+    ctx.fillStyle = pal.day === 1 ? '#3b4a73' : '#0d0f1f'; ctx.fillRect(b.x, by, b.w, b.h);
+    if (pal.day < 1) b.wins.forEach(([wx, wy, s]) => { ctx.fillStyle = s > 0.85 ? '#a08bff' : '#ffd98a'; ctx.globalAlpha = 0.5 + 0.3 * s; ctx.fillRect(b.x + wx, by + wy, 4, 5); });
     ctx.globalAlpha = 1;
   });
-  // Proof-of-Less-Work wind turbines on the horizon
-  [0.3, 0.36].forEach((k, i) => {
+  [0.3, 0.36].forEach((k, i) => { // Proof-of-Less-Work wind turbines
     const x = W * k, y = top - 70, a = t / (700 + i * 200);
     ctx.strokeStyle = '#5dffa8'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, top); ctx.stroke();
@@ -238,27 +327,31 @@ function drawSky(t) {
   });
   ctx.fillStyle = '#5dffa8'; ctx.font = '10px ui-monospace,monospace'; ctx.textAlign = 'center';
   if (W >= 700) ctx.fillText('PoLW power', W * 0.33, top - 6);
-  // neon station sign with a little flicker
-  const flick = Math.random() < 0.015 ? 0.4 : 1;
-  const fs = Math.max(16, Math.min(34, W * 0.03));
+  // weather: every couple of minutes it may start or stop raining
+  if (Date.now() > weather.until) weather = { rain: Math.random() < 0.3 ? 1 : 0, until: Date.now() + 90000 + rnd(90000) };
+  if (weather.rain) {
+    ctx.strokeStyle = 'rgba(170,190,255,.35)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let i = 0; i < 70; i++) { const x = (i * 97 + t * 0.4) % W, y = (i * 53 + t * 0.9) % top; ctx.moveTo(x, y); ctx.lineTo(x - 3, y + 9); }
+    ctx.stroke();
+  }
+  const flick = Math.random() < 0.015 ? 0.4 : 1, fs = Math.max(16, Math.min(34, W * 0.03));
   ctx.font = `bold ${fs}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.shadowColor = '#a08bff'; ctx.shadowBlur = 18 * flick; ctx.fillStyle = `rgba(232,224,255,${flick})`;
   ctx.fillText('ℵ ALEPHIUM CENTRAL', W * 0.5, top - fs * 0.9); ctx.shadowBlur = 0;
 }
 function drawPlatform(row, i, t) {
   ctx.fillStyle = i % 2 ? '#0e1020' : '#101226'; ctx.fillRect(0, row.y0, W, row.h);
-  // back wall tiles + platform sign
   ctx.fillStyle = '#171a33'; for (let x = 0; x < W; x += 18 * u) ctx.fillRect(x, row.y0 + 2, 16 * u, row.floor - row.y0 - 14 * u);
-  ctx.fillStyle = COLORS[i]; ctx.fillRect(W - 92 * u / 2, row.y0 + 3 * u, 40 * u, 7 * u);
+  const sx = W < 700 ? W - 46 * u : W * 0.45;
+  ctx.fillStyle = COLORS[i]; ctx.fillRect(sx, row.y0 + 3 * u, 40 * u, 7 * u);
   ctx.fillStyle = '#0b0c12'; ctx.font = `bold ${Math.round(4 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(`PLATFORM ${i} · G${i}`, W - 92 * u / 2 + 20 * u, row.y0 + 6.5 * u);
-  // lamps
+  ctx.fillText(`PLATFORM ${i} · G${i}`, sx + 20 * u, row.y0 + 6.5 * u);
   for (let x = 60; x < W; x += 180) {
+    const flick = (i * 7 + x) % 11 === 0 && Math.sin(t / 97) > 0.93 ? 0.3 : 1; // one tired lamp per row
     const g = ctx.createRadialGradient(x, row.y0 + 6, 0, x, row.y0 + 6, row.h * 0.6);
-    g.addColorStop(0, 'rgba(255,220,150,.12)'); g.addColorStop(1, 'rgba(255,220,150,0)');
+    g.addColorStop(0, `rgba(255,220,150,${0.12 * flick})`); g.addColorStop(1, 'rgba(255,220,150,0)');
     ctx.fillStyle = g; ctx.fillRect(x - row.h * 0.6, row.y0, row.h * 1.2, row.h);
   }
-  // floor, yellow safety line, track bed, rails, sleepers
   ctx.fillStyle = '#2a2d45'; ctx.fillRect(0, row.floor, W, row.track - row.floor - 6 * u);
   ctx.fillStyle = '#e8c547'; ctx.fillRect(0, row.floor + 1.5 * u, W, u * 0.8);
   ctx.fillStyle = '#05060b'; ctx.fillRect(0, row.track - 6 * u, W, row.y0 + row.h - row.track + 6 * u);
@@ -266,9 +359,56 @@ function drawPlatform(row, i, t) {
   ctx.fillStyle = '#8a8fa8'; ctx.fillRect(0, row.track, W, u * 0.8);
 }
 
-// ---- data: live, with demo fallback ----
-const departures = [], history = [];
-let lastBlockAt = 0;
+// ---- announcements & sound ----
+const tickerEl = document.getElementById('ticker');
+let lastAnnounce = 0;
+function announce(msg) {
+  if (Date.now() - lastAnnounce < 2500 && !/✅|🐋/.test(msg)) return;
+  lastAnnounce = Date.now();
+  tickerEl.style.opacity = 0;
+  setTimeout(() => { tickerEl.textContent = msg; tickerEl.style.opacity = 1; }, 300);
+}
+let audio = null, soundOn = false;
+document.getElementById('snd').onclick = e => {
+  soundOn = !soundOn; e.target.textContent = soundOn ? '🔊' : '🔇';
+  if (soundOn && !audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+};
+function chime(f) {
+  if (!soundOn || !audio) return;
+  const base = [523, 587, 659, 784][f];
+  [0, 0.12].forEach((dly, k) => {
+    const o = audio.createOscillator(), g = audio.createGain(), t0 = audio.currentTime + dly;
+    o.type = 'triangle'; o.frequency.value = k ? base * 1.25 : base;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.06, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.4);
+    o.connect(g).connect(audio.destination); o.start(t0); o.stop(t0 + 0.45);
+  });
+}
+
+// ---- inspect & search ----
+const tip = document.getElementById('tip');
+function showTip(p, cx, cy) {
+  const link = p.hash ? `<br><a href="${EXPLORER}/transactions/${p.hash}" target="_blank" rel="noopener">open in explorer ↗</a>` : '';
+  tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[p.to]}">${p.whale ? '🐋 Whale' : p.contract ? '⚙️ Contract call' : 'Passenger'}</b><br>
+    ${p.hash ? 'tx ' + short(p.hash) + '<br>' : '<i>simulated</i><br>'}
+    Platform ${p.f} → ${DEST[p.to]} (G${p.to})<br>
+    ${p.alph ? fmt(p.alph) + ' ALPH' : ''}${p.tokens ? ' + tokens' : ''}
+    ${p.from ? '<br>from ' + short(p.from) : ''}${link}`;
+  tip.style.display = 'block';
+  tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
+  tip.querySelector('.x').onclick = () => tip.style.display = 'none';
+}
+cv.addEventListener('click', e => {
+  let best = null, bd = 18 * u;
+  people.forEach(p => { if (p.state === 'board') return; const r = rows[p.f]; const d = Math.hypot(p.x - e.clientX, r.floor - 5 * u - e.clientY); if (d < bd) { bd = d; best = p; } });
+  if (best) showTip(best, e.clientX, e.clientY); else tip.style.display = 'none';
+});
+document.getElementById('find').addEventListener('input', e => {
+  findQuery = e.target.value.trim();
+  let n = 0; people.forEach(p => { p.found = matches(p); if (p.found) n++; });
+  if (findQuery.length >= 4) announce(n ? `🔎 Found ${n} passenger${n > 1 ? 's' : ''} for you. Look for the green arrow.` : '🔎 Not on a platform yet. Watching the gates for you…');
+});
+
+// ---- data: live mainnet, with demo fallback ----
 function renderBoard() {
   document.getElementById('rows').innerHTML = departures.map(d =>
     `<tr><td style="color:${COLORS[d.f]}">P${d.f}</td><td>→ ${DEST[d.to]}</td><td>#${d.h}</td><td>${d.pax ? d.pax + ' pax' : 'ghost 👻'}</td></tr>`).join('');
@@ -286,20 +426,44 @@ async function getJSON(path) {
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
+const atto = s => { try { return Number(BigInt(s) / 10n ** 14n) / 1e4; } catch { return 0; } };
+// Turn an explorer transaction into passenger details. Value = ALPH sent to addresses other than the sender (i.e. not change).
+function txInfo(tx, chainFrom, chainTo) {
+  const from = tx.inputs?.[0]?.address || '';
+  const outs = (tx.outputs || []).filter(o => o.address !== from);
+  return {
+    hash: tx.hash, from, chainFrom, chainTo,
+    alph: outs.filter(o => o.type !== 'ContractOutput').reduce((s, o) => s + atto(o.attoAlphAmount || '0'), 0),
+    dests: outs.map(o => o.address),
+    tokens: outs.some(o => o.tokens?.length),
+    contract: (tx.outputs || []).some(o => o.type === 'ContractOutput'),
+  };
+}
+async function arrive(b) {
+  let riders = [];
+  if (b.txNumber > 1) {
+    try {
+      const txs = await getJSON(`/blocks/${b.hash}/transactions?page=1&limit=40`);
+      riders = txs.filter(tx => !tx.coinbase && tx.inputs?.length).map(tx => txInfo(tx, b.chainFrom, b.chainTo));
+    } catch { /* fall back to anonymous riders */ }
+  }
+  // Passengers we already saw in the mempool are on the platform; anyone else runs in late from the gate.
+  riders.forEach(r => { if (!people.some(p => p.hash === r.hash)) spawnPerson(b.chainFrom, b.chainTo, { ...r, late: true }); });
+  const named = riders.length, anon = Math.max(0, b.txNumber - 1 - named);
+  const have = people.filter(p => p.f === b.chainFrom && p.to === b.chainTo && !p.hash && p.state !== 'board').length;
+  for (let k = have; k < Math.min(12, anon); k++) spawnPerson(b.chainFrom, b.chainTo, { late: true });
+  setTimeout(() => enqueueTrain(b, riders), 600);
+}
 async function pollBlocks() {
   try {
     const { blocks } = await getJSON('/blocks?page=1&limit=40');
-    const fresh = blocks.filter(b => !seen.has(b.hash)).sort((a, b) => a.timestamp - b.timestamp);
+    const fresh = blocks.filter(b => b.mainChain !== false && !seen.has(b.hash)).sort((a, b) => a.timestamp - b.timestamp);
     const first = seen.size === 0;
     fresh.forEach(b => seen.add(b.hash));
-    (first ? fresh.slice(-4) : fresh).forEach((b, i) => setTimeout(() => {
-      // make sure riders exist on the platform so you see them board
-      const have = people.filter(p => p.f === b.chainFrom && p.to === b.chainTo && p.state !== 'board').length;
-      for (let k = have; k < Math.min(12, b.txNumber - 1); k++) spawnPerson(b.chainFrom, b.chainTo);
-      setTimeout(() => enqueueTrain(b), 1200);
-    }, i * 400));
+    (first ? fresh.slice(-4) : fresh).forEach((b, i) => setTimeout(() => arrive(b), i * 450));
     if (seen.size > 2000) seen = new Set([...seen].slice(-500));
-    fails = 0; if (mode !== 'live') { mode = 'live'; setMode('live'); stopDemo(); }
+    fails = 0;
+    if (mode !== 'live') { mode = 'live'; setMode('live'); stopDemo(); people.length = 0; announce('📡 Connected to Alephium mainnet. Trains are real blocks now.'); }
   } catch (e) {
     fails++;
     if (mode === 'live') setMode('retry');
@@ -309,30 +473,33 @@ async function pollBlocks() {
 async function pollMempool() {
   if (mode !== 'live') return;
   try {
-    const txs = await getJSON('/unconfirmed-transactions?page=1&limit=100');
-    txs.forEach(tx => {
-      if (tx.chainFrom == null) return;
-      const have = people.filter(p => p.f === tx.chainFrom && p.to === tx.chainTo && p.state !== 'board').length;
-      if (have < 8) spawnPerson(tx.chainFrom, tx.chainTo);
-    });
-  } catch (e) { /* pollBlocks handles mode changes */ }
+    const txs = await getJSON('/mempool/transactions?page=1&limit=100');
+    txs.forEach(tx => { if (tx.chainFrom != null) spawnPerson(tx.chainFrom, tx.chainTo, txInfo(tx, tx.chainFrom, tx.chainTo)); });
+  } catch { /* pollBlocks handles mode changes */ }
 }
 const demoHeight = Array.from({ length: G * G }, () => 4_200_000 + rnd(1000));
+const fakeHash = () => [...Array(64)].map(() => '0123456789abcdef'[rnd(16)]).join('');
+function demoAmount() { const r = Math.random(); return r < 0.03 ? WHALE + Math.random() * 90000 : Math.exp(Math.random() * 7) / 3; }
 function startDemo() {
   if (demoTimer) return;
   demoTimer = setInterval(() => {
-    for (let k = 0; k < 2; k++) { const f = rnd(G); spawnPerson(f, Math.random() < 0.4 ? f : rnd(G)); }
+    for (let k = 0; k < 2; k++) {
+      const f = rnd(G);
+      spawnPerson(f, Math.random() < 0.4 ? f : rnd(G), { alph: demoAmount(), tokens: Math.random() < 0.1, contract: Math.random() < 0.08 });
+    }
     if (Math.random() < 0.5) { // ~2 blocks/s network-wide, like post-Danube mainnet
       const f = rnd(G), to = rnd(G), i = f * G + to;
-      const waitingHere = people.filter(p => p.f === f && p.to === to && p.state === 'wait').length;
-      const pax = Math.random() < 0.06 ? 0 : Math.random() < 0.04 ? 25 + rnd(30) : Math.max(1, waitingHere + rnd(3));
-      enqueueTrain({ chainFrom: f, chainTo: to, height: ++demoHeight[i], txNumber: pax + 1 });
+      const waitingHere = people.filter(p => p.f === f && p.to === to && p.state === 'wait');
+      const pax = Math.random() < 0.06 ? 0 : Math.random() < 0.04 ? 25 + rnd(30) : Math.max(1, waitingHere.length + rnd(3));
+      for (let k = waitingHere.length; k < Math.min(pax, 12); k++) spawnPerson(f, to, { late: true, alph: demoAmount() });
+      const riders = people.filter(p => p.f === f && p.to === to && p.state !== 'board').slice(0, pax);
+      enqueueTrain({ chainFrom: f, chainTo: to, height: ++demoHeight[i], txNumber: pax + 1, hash: fakeHash() }, riders.map(p => ({ hash: p.hash, alph: p.alph })));
     }
   }, 500);
 }
 function stopDemo() { clearInterval(demoTimer); demoTimer = null; }
 setMode('demo'); startDemo();
-if (!forceDemo) { pollBlocks(); setInterval(pollBlocks, 4000); setInterval(pollMempool, 5000); }
+if (!forceDemo) { pollBlocks(); setInterval(pollBlocks, 4000); setInterval(pollMempool, 3000); }
 
 // ---- main loop ----
 let prev = performance.now();
@@ -342,17 +509,32 @@ function frame(now) {
   for (let i = people.length - 1; i >= 0; i--) {
     const p = people[i], dx = p.tx - p.x;
     if (Math.abs(dx) > 1) p.x += Math.sign(dx) * Math.min(Math.abs(dx), p.speed * dt * u);
-    else if (p.state === 'walk') p.state = 'wait';
-    else if (p.state === 'board') { p.a -= dt / 200; if (p.a <= 0) people.splice(i, 1); }
-    // waiting people shuffle about a little
+    else if (p.state === 'walk') { p.state = 'wait'; p.speed = 0.035 + Math.random() * 0.03; }
+    else if (p.state === 'board') {
+      if (p.a === 1 && p.alph >= 0.01) floatText(p.x, rows[p.f].floor - 14 * u, p.whale ? `🐋 ${fmt(p.alph)} ALPH` : `+${fmt(p.alph)} ℵ`, p.whale ? '#ffd25d' : COLORS[p.to]);
+      p.a -= dt / 200; if (p.a <= 0) people.splice(i, 1);
+    }
     if (p.state === 'wait' && Math.random() < 0.002) { p.tx = Math.max(10, Math.min(W * 0.8, p.x + (Math.random() - 0.5) * 40 * u)); p.state = 'walk'; }
   }
   drawSky(now);
   rows.forEach((row, i) => {
     drawPlatform(row, i, now);
+    drawPigeons(i, row, now);
     people.filter(p => p.f === i).forEach(p => drawPerson(p, row, now));
     if (platforms[i].train) drawTrain(platforms[i].train, row, now);
   });
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const q = particles[i]; q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 0.0008 * dt; q.life -= dt;
+    if (q.life <= 0) { particles.splice(i, 1); continue; }
+    ctx.fillStyle = q.c; ctx.fillRect(q.x, q.y, 2, 2);
+  }
+  ctx.textAlign = 'center'; ctx.font = `bold ${Math.round(3.4 * u)}px ui-monospace,monospace`;
+  for (let i = labels.length - 1; i >= 0; i--) {
+    const l = labels[i]; l.life -= dt; l.y -= dt * 0.02;
+    if (l.life <= 0) { labels.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, l.life / 500); ctx.fillStyle = l.color; ctx.fillText(l.text, l.x, l.y);
+  }
+  ctx.globalAlpha = 1;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -362,6 +544,7 @@ setInterval(() => {
   while (history.length && history[0].at < cut) history.shift();
   document.getElementById('sBlocks').textContent = history.length;
   document.getElementById('sTx').textContent = history.reduce((s, h) => s + h.pax, 0);
+  document.getElementById('sAlph').textContent = fmt(history.reduce((s, h) => s + h.alph, 0));
   document.getElementById('sWait').textContent = people.filter(p => p.state !== 'board').length;
   document.getElementById('sLast').textContent = lastBlockAt ? ((Date.now() - lastBlockAt) / 1000).toFixed(1) + 's' : '–';
   document.getElementById('clock').textContent = new Date().toTimeString().slice(0, 8);

@@ -1,9 +1,19 @@
-# ℵ Central Station / ℵ Metro
+# ℵ Central Station
 
-Alephium, live, drawn as a metro map. Open `index.html` (station view) or `map.html` (neon metro map) in a browser; no build step.
+Alephium, live, as a pixel-art train station. Open `index.html` (station) or `map.html` (neon metro map). No build step; host anywhere static.
 
-- 4 districts = Alephium's 4 groups; 16 lines = its 16 chains (4 loop lines, 12 express lines through the central ℵ station)
-- Every block is a train leaving on its chain's line; every transaction is a passenger
-- Empty blocks are ghost trains 👻
-- Live data comes from the public explorer API (`backend.mainnet.alephium.org`): `/blocks` for trains, `/unconfirmed-transactions` for waiting passengers
-- If the API can't be reached, it switches to a simulated demo (~2 blocks/s, like post-Danube mainnet). Force it with `?demo`
+- 4 platforms = Alephium's 4 groups; a train's destination = the block's `chainTo` (16 routes)
+- Every block is a train; every transaction is a passenger who boards it
+- Live passengers are real transactions: they appear from the mempool, and the exact ones in a block board that train. Click one to see its tx and open it in the explorer
+- 🐋 Whales (≥10,000 ALPH sent), token carriers (green bag), contract callers (juggling gears), 👻 ghost trains for empty blocks, gold rush-hour trains for 25+ txs
+- Search box: paste a tx hash or address (≥4 chars) and your passenger gets a green arrow
+- Announcements ticker, optional chimes (🔇/🔊), pigeons, braking sparks, rain, shooting stars, sky follows your local time of day
+
+## Data
+
+Public explorer API `https://backend.mainnet.alephium.org`:
+- `GET /blocks?page=1&limit=40` every 4s (main-chain blocks only)
+- `GET /blocks/{hash}/transactions` for each new block with transactions
+- `GET /mempool/transactions?page=1&limit=100` every 3s
+
+If the API can't be reached it falls back to a simulated demo (~2 blocks/s, like post-Danube mainnet). Force it with `?demo`.
