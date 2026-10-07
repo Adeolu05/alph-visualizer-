@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ℵ Metro: Alephium live</title>
+<meta name="description" content="Watch Alephium live as a metro: 4 districts, 16 lines, every block a train, every transaction a passenger.">
+<meta name="theme-color" content="#07080f">
+<style>
+  :root { --bg:#07080f; --panel:rgba(14,16,30,.82); --ink:#e8ecff; --dim:#8b93b8; --line:#23284a; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+    font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; overflow:hidden; }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  header { position:fixed; top:16px; left:16px; right:16px; display:flex; gap:12px;
+    align-items:flex-start; justify-content:space-between; pointer-events:none; }
+  h1 { margin:0; font-size:20px; letter-spacing:.04em; }
+  h1 small { display:block; font-size:12px; color:var(--dim); font-weight:normal; letter-spacing:0; }
+  .badge { pointer-events:auto; padding:4px 10px; border-radius:999px; font-size:12px;
+    border:1px solid var(--line); background:var(--panel); white-space:nowrap; }
+  .badge.live { color:#5dffa8; } .badge.demo { color:#ffd25d; } .badge.retry { color:#ff7a7a; }
+  .stats { position:fixed; left:16px; bottom:16px; display:flex; gap:8px; flex-wrap:wrap; max-width:calc(100% - 32px); }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 10px; }
+  .stat b { display:block; font-size:18px; }
+  .stat span { color:var(--dim); font-size:11px; }
+  #board { position:fixed; right:16px; bottom:16px; width:300px; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  #board h2 { margin:0 0 6px; font-size:12px; color:#ffb347; letter-spacing:.12em; }
+  #board table { width:100%; border-collapse:collapse; font-size:12px; }
+  #board td { padding:2px 0; } #board td:last-child { text-align:right; color:var(--dim); }
+  .chip { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; }
+  @media (max-width:700px) {
+    #board { width:auto; left:16px; bottom:auto; top:96px; max-height:30vh; overflow:hidden; }
+    #board tr:nth-child(n+5) { display:none; }
+    h1 { font-size:16px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<header>
+  <h1>ℵ Metro<small>Alephium, live. Every block is a train, every transaction a passenger.</small></h1>
+  <span id="mode" class="badge demo">● DEMO</span>
+</header>
+<div class="stats">
+  <div class="stat"><b id="sBlocks">0</b><span>trains / min</span></div>
+  <div class="stat"><b id="sTx">0</b><span>passengers / min</span></div>
+  <div class="stat"><b id="sWait">0</b><span>waiting</span></div>
+  <div class="stat"><b id="sLast">–</b><span>since last train</span></div>
+</div>
+<div id="board"><h2>DEPARTURES</h2><table id="rows"></table></div>
+
+<script>
+const API = 'https://backend.mainnet.alephium.org';
+const G = 4;
+const COLORS = ['#ff5d8f', '#5dd6ff', '#ffd25d', '#8f7bff'];
+const NAMES = ['Rose Quarter', 'Harbour', 'Old Town', 'Violet Heights'];
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W, H, S, center, districts = [];
+function layout() {
+  const dpr = devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  S = Math.min(W, H);
+  center = { x: W / 2, y: H / 2 + (W < 700 ? 40 : 10) };
+  const R = S * 0.32;
+  districts = [...Array(G)].map((_, i) => {
+    const a = -Math.PI * 3 / 4 + i * Math.PI / 2;
+    return { x: center.x + Math.cos(a) * R, y: center.y + Math.sin(a) * R * 0.85 };
+  });
+}
+addEventListener('resize', layout); layout();
+
+// Point at t (0..1) along line f->t, plus its tangent angle.
+function pathPoint(f, to, t) {
+  const A = districts[f], B = districts[to];
+  if (f === to) { // loop line around the district
+    const r = S * 0.07, a0 = Math.atan2(A.y - center.y, A.x - center.x);
+    const a = a0 + t * Math.PI * 2, cx = A.x + Math.cos(a0) * r, cy = A.y + Math.sin(a0) * r;
+    return { x: cx - Math.cos(a) * r, y: cy - Math.sin(a) * r, ang: a - Math.PI / 2 };
+  }
+  // Express: curve through the central ℵ interchange, offset so both directions run side by side
+  const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy);
+  const off = 7, nx = -dy / len * off, ny = dx / len * off;
+  const P0 = { x: A.x + nx, y: A.y + ny }, P2 = { x: B.x + nx, y: B.y + ny };
+  const P1 = { x: (center.x * 1.2 + (A.x + B.x) / 2 * 0.8) / 2 + nx * 2, y: (center.y * 1.2 + (A.y + B.y) / 2 * 0.8) / 2 + ny * 2 };
+  const u = 1 - t;
+  return {
+    x: u * u * P0.x + 2 * u * t * P1.x + t * t * P2.x,
+    y: u * u * P0.y + 2 * u * t * P1.y + t * t * P2.y,
+    ang: Math.atan2(2 * u * (P1.y - P0.y) + 2 * t * (P2.y - P1.y), 2 * u * (P1.x - P0.x) + 2 * t * (P2.x - P1.x)),
+  };
+}
+function platform(f, to) { // where passengers queue for a line
+  const A = districts[f];
+  const p = pathPoint(f, to, f === to ? 0.5 : 0.12);
+  return { x: A.x + (p.x - A.x) * 0.55, y: A.y + (p.y - A.y) * 0.55 };
+}
+
+// ---- state ----
+const waiting = Array.from({ length: G }, () => Array(G).fill(0));
+const trains = [], departures = [], history = [];
+let lastBlockAt = 0;
+
+function depart(b) {
+  const f = b.chainFrom, to = b.chainTo, pax = Math.max(0, (b.txNumber || 1) - 1); // minus coinbase
+  waiting[f][to] = Math.max(0, waiting[f][to] - pax);
+  trains.push({ f, to, pax, t: 0, ghost: pax === 0, dur: f === to ? 2600 : 3200 });
+  departures.unshift({ f, to, h: b.height, pax, ts: b.timestamp || Date.now() });
+  departures.length = Math.min(departures.length, 8);
+  history.push({ at: Date.now(), pax });
+  lastBlockAt = Date.now();
+  renderBoard();
+}
+
+function renderBoard() {
+  document.getElementById('rows').innerHTML = departures.map(d =>
+    `<tr><td><span class="chip" style="background:${COLORS[d.f]}"></span>${d.f}→${d.to}<span class="chip" style="background:${COLORS[d.to]};margin-left:4px"></span></td>
+     <td>#${d.h}</td><td>${d.pax === 0 ? 'ghost' : d.pax + ' pax'}</td></tr>`).join('');
+}
+
+// ---- data: live with demo fallback ----
+const modeEl = document.getElementById('mode');
+function setMode(m) {
+  modeEl.className = 'badge ' + m;
+  modeEl.textContent = { live: '● LIVE mainnet', demo: '● DEMO (simulated)', retry: '● reconnecting…' }[m];
+}
+const forceDemo = new URLSearchParams(location.search).has('demo');
+let mode = 'demo', seen = new Set(), fails = 0, demoTimer = null;
+
+async function getJSON(path) {
+  const r = await fetch(API + path, { cache: 'no-store' });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+async function pollBlocks() {
+  try {
+    const { blocks } = await getJSON('/blocks?page=1&limit=40');
+    const fresh = blocks.filter(b => !seen.has(b.hash)).sort((a, b) => a.timestamp - b.timestamp);
+    const first = seen.size === 0;
+    fresh.forEach(b => seen.add(b.hash));
+    // On first load only animate the newest few; afterwards stagger arrivals so they don't all leave at once
+    (first ? fresh.slice(-6) : fresh).forEach((b, i) => setTimeout(() => depart(b), i * 350));
+    if (seen.size > 2000) seen = new Set([...seen].slice(-500));
+    fails = 0; if (mode !== 'live') { mode = 'live'; setMode('live'); stopDemo(); }
+  } catch (e) {
+    fails++;
+    if (mode === 'live') setMode('retry');
+    if (fails >= 2 && mode !== 'demo') { mode = 'demo'; setMode('demo'); startDemo(); }
+  }
+}
+async function pollMempool() {
+  if (mode !== 'live') return;
+  try {
+    const txs = await getJSON('/unconfirmed-transactions?page=1&limit=100');
+    for (let f = 0; f < G; f++) waiting[f].fill(0);
+    txs.forEach(tx => { if (tx.chainFrom != null) waiting[tx.chainFrom][tx.chainTo]++; });
+  } catch (e) { /* blocks poll handles mode changes */ }
+}
+
+let demoHeight = Array.from({ length: G * G }, () => 4_200_000 + Math.floor(Math.random() * 1000));
+function startDemo() {
+  if (demoTimer) return;
+  demoTimer = setInterval(() => {
+    // new passengers arrive
+    for (let k = 0; k < 3; k++) { const f = rnd(G), to = Math.random() < 0.55 ? f : rnd(G); waiting[f][to]++; }
+    // ~2 blocks/s network-wide, like post-Danube mainnet
+    if (Math.random() < 0.5) {
+      const f = rnd(G), to = rnd(G), i = f * G + to;
+      const pax = Math.random() < 0.08 ? 0 : Math.max(1 + rnd(4), Math.min(waiting[f][to], 1 + rnd(14)));
+      depart({ chainFrom: f, chainTo: to, height: ++demoHeight[i], txNumber: pax + 1 });
+    }
+  }, 250);
+}
+function stopDemo() { clearInterval(demoTimer); demoTimer = null; }
+const rnd = n => Math.floor(Math.random() * n);
+
+setMode('demo'); startDemo();
+if (!forceDemo) { pollBlocks(); setInterval(pollBlocks, 4000); setInterval(pollMempool, 5000); }
+
+// ---- drawing ----
+function drawLines(time) {
+  ctx.lineCap = 'round';
+  for (let f = 0; f < G; f++) for (let to = 0; to < G; to++) {
+    ctx.beginPath();
+    for (let i = 0; i <= 40; i++) { const p = pathPoint(f, to, i / 40); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+    ctx.strokeStyle = COLORS[f] + '40'; ctx.lineWidth = 4; ctx.stroke();
+  }
+}
+function drawCentral(time) {
+  const pulse = 1 + Math.sin(time / 600) * 0.05, r = S * 0.06 * pulse;
+  const g = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, r * 2.2);
+  g.addColorStop(0, 'rgba(255,255,255,.18)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(center.x, center.y, r * 2.2, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(r * 1.3)}px serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#fff'; ctx.shadowBlur = 20; ctx.fillText('ℵ', center.x, center.y); ctx.shadowBlur = 0;
+}
+function drawDistricts() {
+  districts.forEach((d, i) => {
+    ctx.fillStyle = COLORS[i] + '22'; ctx.strokeStyle = COLORS[i];
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(d.x, d.y, S * 0.035, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = COLORS[i]; ctx.font = `bold ${Math.max(11, S * 0.022)}px ui-monospace,monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('G' + i, d.x, d.y);
+    ctx.font = `${Math.max(10, S * 0.017)}px ui-monospace,monospace`; ctx.fillStyle = '#8b93b8';
+    const below = d.y > center.y;
+    ctx.fillText(NAMES[i], d.x, d.y + (below ? 1 : -1) * S * 0.16);
+  });
+}
+function drawPassengers(time) {
+  for (let f = 0; f < G; f++) for (let to = 0; to < G; to++) {
+    const n = waiting[f][to]; if (!n) continue;
+    const p = platform(f, to), shown = Math.min(n, 9);
+    for (let k = 0; k < shown; k++) {
+      const x = p.x + (k % 3 - 1) * 6, y = p.y + Math.floor(k / 3) * 7 + Math.sin(time / 300 + k) * 0.8;
+      ctx.fillStyle = COLORS[to]; ctx.beginPath(); ctx.arc(x, y - 3, 1.8, 0, 7); ctx.fill();
+      ctx.fillRect(x - 1.5, y - 1, 3, 4);
+    }
+    if (n > shown) { ctx.fillStyle = '#e8ecff'; ctx.font = '10px ui-monospace,monospace'; ctx.fillText('+' + (n - shown), p.x + 16, p.y); }
+  }
+}
+function drawTrains(dt) {
+  for (let i = trains.length - 1; i >= 0; i--) {
+    const tr = trains[i]; tr.t += dt / tr.dur;
+    if (tr.t >= 1) { trains.splice(i, 1); continue; }
+    const e = tr.t < .5 ? 2 * tr.t * tr.t : 1 - Math.pow(-2 * tr.t + 2, 2) / 2;
+    const cars = 3 + Math.min(3, Math.floor(tr.pax / 6));
+    for (let c = cars - 1; c >= 0; c--) {
+      const p = pathPoint(tr.f, tr.to, Math.max(0, e - c * 0.025));
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.ang);
+      ctx.globalAlpha = tr.ghost ? 0.35 + Math.sin(performance.now() / 120) * 0.15 : 1;
+      ctx.shadowColor = COLORS[tr.f]; ctx.shadowBlur = tr.ghost ? 4 : 14;
+      ctx.fillStyle = c === 0 ? '#fff' : COLORS[tr.f];
+      ctx.fillRect(-6, -3.5, 11, 7); ctx.restore();
+    }
+    if (tr.ghost) {
+      const p = pathPoint(tr.f, tr.to, e);
+      ctx.font = '14px serif'; ctx.textAlign = 'center'; ctx.fillText('👻', p.x, p.y - 12);
+    } else if (tr.pax >= 20) {
+      const p = pathPoint(tr.f, tr.to, e);
+      ctx.font = 'bold 10px ui-monospace,monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+      ctx.fillText(tr.pax + ' pax', p.x, p.y - 12);
+    }
+  }
+}
+// Proof of Less Work: a little windmill depot that spins gently
+function drawDepot(time) {
+  const x = W - 40, y = 92, a = time / 900;
+  ctx.strokeStyle = '#5dffa8'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 26); ctx.stroke();
+  for (let k = 0; k < 3; k++) {
+    const b = a + k * 2.094; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(b) * 14, y + Math.sin(b) * 14); ctx.stroke();
+  }
+  ctx.fillStyle = '#8b93b8'; ctx.font = '10px ui-monospace,monospace'; ctx.textAlign = 'right';
+  ctx.fillText('PoLW depot', x - 20, y + 4);
+}
+
+let prev = performance.now();
+function frame(now) {
+  const dt = Math.min(100, now - prev); prev = now;
+  ctx.fillStyle = '#07080f'; ctx.fillRect(0, 0, W, H);
+  drawLines(now); drawCentral(now); drawDistricts(); drawPassengers(now); drawTrains(dt);
+  if (W >= 700) drawDepot(now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+setInterval(() => {
+  const cut = Date.now() - 60000;
+  while (history.length && history[0].at < cut) history.shift();
+  document.getElementById('sBlocks').textContent = history.length;
+  document.getElementById('sTx').textContent = history.reduce((s, h) => s + h.pax, 0);
+  document.getElementById('sWait').textContent = waiting.flat().reduce((a, b) => a + b, 0);
+  document.getElementById('sLast').textContent = lastBlockAt ? ((Date.now() - lastBlockAt) / 1000).toFixed(1) + 's' : '–';
+}, 250);
+</script>
+</body>
+</html>
