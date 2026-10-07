@@ -19,7 +19,7 @@
   html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
     font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; overflow:hidden; }
   canvas { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:default; }
-  header { position:fixed; top:14px; left:16px; right:16px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; pointer-events:none; }
+  header { position:fixed; top:14px; left:16px; right:16px; z-index:4; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; pointer-events:none; }
   header > * { pointer-events:auto; }
   h1 { margin:0 auto 0 0; font-size:20px; letter-spacing:.04em; text-shadow:0 0 12px #8f7bff; pointer-events:none;
     background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:6px 12px; backdrop-filter:blur(4px); }
@@ -29,6 +29,20 @@
   #price { font-weight:bold; } #price .up { color:#5dffa8; } #price .down { color:#ff7a7a; }
   #price.flash { box-shadow:0 0 14px #ffd25d; }
   .badge.live { color:#5dffa8; } .badge.demo { color:#ffd25d; } .badge.retry { color:#ff7a7a; }
+  .color-legend { z-index:4; }
+  .color-legend summary { list-style:none; }
+  .color-legend summary::-webkit-details-marker { display:none; }
+  .color-legend summary::after { content:' ▾'; }
+  .color-legend[open] summary::after { content:' ▴'; }
+  .color-legend summary:focus-visible { outline:2px solid #a08bff; outline-offset:3px; }
+  .legend-body { position:absolute; top:calc(100% + 8px); right:0; width:300px; max-width:100%;
+    max-height:calc(100dvh - 180px); overflow:auto; padding:12px; background:#0c0e1c;
+    border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.5); font-size:11px; }
+  .legend-body p { margin:0 0 8px; color:#c3c9e8; }
+  .legend-body ul { list-style:none; margin:0; padding:0; }
+  .legend-body li { display:flex; align-items:center; gap:8px; margin:5px 0; }
+  .legend-swatch { width:10px; height:10px; flex:none; border-radius:2px; background:var(--swatch); }
+  .legend-body .legend-special { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); }
   #find { width:190px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); background:var(--panel);
     color:var(--ink); font:inherit; font-size:12px; outline:none; }
   #find:focus { border-color:#a08bff; }
@@ -68,6 +82,19 @@
   <input id="find" placeholder="🔎 find tx or address" autocomplete="off" spellcheck="false">
   <button id="snd" class="badge" title="Station sounds">🔇</button>
   <a class="badge" href="map.html">🗺 map</a>
+  <details class="color-legend">
+    <summary class="badge">Color legend</summary>
+    <div class="legend-body">
+      <p>Platforms show the origin group. Passenger clothes and train stripes show the destination.</p>
+      <ul id="legendGroups" aria-label="Group colors"></ul>
+      <ul class="legend-special" aria-label="Special colors">
+        <li><span class="legend-swatch" style="--swatch:#e9b949" aria-hidden="true"></span>Gold · whale (≥10,000 ALPH in outputs) or rush-hour train (25+ passengers)</li>
+        <li><span class="legend-swatch" style="--swatch:#ff8c1a" aria-hidden="true"></span>Orange vest, yellow hat · miner</li>
+        <li><span class="legend-swatch" style="--swatch:#5dffa8" aria-hidden="true"></span>Green bag · tokens; green arrow · search match</li>
+        <li><span class="legend-swatch" style="--swatch:#ff7a7a" aria-hidden="true"></span>Red ✕ · failed execution</li>
+      </ul>
+    </div>
+  </details>
   <a id="price" class="badge" href="https://www.coingecko.com/en/coins/alephium" target="_blank" rel="noopener" title="ALPH price (CoinGecko)">ALPH $…</a>
   <span id="mode" class="badge demo">● DEMO</span>
 </header>
@@ -103,6 +130,8 @@ const EXPLORER = 'https://explorer.alephium.org';
 const G = 4;
 const COLORS = ['#ff5d8f', '#5dd6ff', '#ffd25d', '#a08bff'];
 const DEST = ['Rose Quarter', 'Harbour', 'Old Town', 'Violet Hts'];
+document.getElementById('legendGroups').innerHTML = COLORS.map((color, i) =>
+  `<li><span class="legend-swatch" style="--swatch:${color}" aria-hidden="true"></span>${['Pink', 'Blue', 'Yellow', 'Purple'][i]} · G${i} · ${DEST[i]}</li>`).join('');
 const SKIN = ['#f1c7a5', '#d9a07a', '#a86b48', '#6e4630', '#f5d6b8'];
 const WHALE = 10000; // ALPH
 const rnd = n => Math.floor(Math.random() * n);
