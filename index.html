@@ -3,42 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ℵ Metro: Alephium live</title>
-<meta name="description" content="Watch Alephium live as a metro: 4 districts, 16 lines, every block a train, every transaction a passenger.">
+<title>ℵ Central Station</title>
+<meta name="description" content="Alephium live as a night-time train station: every block is a train, every transaction a passenger catching it.">
 <meta name="theme-color" content="#07080f">
-<meta property="og:title" content="ℵ Metro: Alephium, live">
-<meta property="og:description" content="Every Alephium block is a train, every transaction a passenger. 4 districts, 16 lines, live.">
+<meta property="og:title" content="ℵ Central Station: Alephium, live">
+<meta property="og:description" content="Every Alephium block is a train, every transaction a little passenger catching it. 4 platforms, 16 routes, live.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="og.png">
-<meta property="og:image:alt" content="Neon metro map with four coloured districts, 16 lines and a glowing ℵ station, trains moving between them">
+<meta property="og:image:alt" content="Pixel-art night train station with four platforms, neon ℵ sign and trains full of passengers">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="og.png">
 <style>
-  :root { --bg:#07080f; --panel:rgba(14,16,30,.82); --ink:#e8ecff; --dim:#8b93b8; --line:#23284a; }
+  :root { --bg:#07080f; --panel:rgba(12,14,28,.86); --ink:#e8ecff; --dim:#8b93b8; --line:#262b50; }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
-    font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; overflow:hidden; }
-  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
-  header { position:fixed; top:16px; left:16px; right:16px; display:flex; gap:12px;
-    align-items:flex-start; justify-content:space-between; pointer-events:none; }
-  h1 { margin:0; font-size:20px; letter-spacing:.04em; }
-  h1 small { display:block; font-size:12px; color:var(--dim); font-weight:normal; letter-spacing:0; }
-  .badge { pointer-events:auto; padding:4px 10px; border-radius:999px; font-size:12px;
-    border:1px solid var(--line); background:var(--panel); white-space:nowrap; }
+    font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; overflow:hidden; }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; image-rendering:pixelated; }
+  header { position:fixed; top:14px; left:16px; right:16px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
+  h1 { margin:0 auto 0 0; font-size:20px; letter-spacing:.04em; text-shadow:0 0 12px #8f7bff; }
+  h1 small { display:block; font-size:12px; color:var(--dim); font-weight:normal; letter-spacing:0; text-shadow:none; }
+  .badge { padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line);
+    background:var(--panel); white-space:nowrap; color:var(--ink); text-decoration:none; }
   .badge.live { color:#5dffa8; } .badge.demo { color:#ffd25d; } .badge.retry { color:#ff7a7a; }
-  .stats { position:fixed; left:16px; bottom:16px; display:flex; gap:8px; flex-wrap:wrap; max-width:calc(100% - 32px); }
-  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 10px; }
-  .stat b { display:block; font-size:18px; }
-  .stat span { color:var(--dim); font-size:11px; }
-  #board { position:fixed; right:16px; bottom:16px; width:300px; background:var(--panel);
-    border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
-  #board h2 { margin:0 0 6px; font-size:12px; color:#ffb347; letter-spacing:.12em; }
-  #board table { width:100%; border-collapse:collapse; font-size:12px; }
-  #board td { padding:2px 0; } #board td:last-child { text-align:right; color:var(--dim); }
-  .chip { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; }
+  #board { position:fixed; right:16px; top:64px; width:290px; background:#0b0c12; border:2px solid #2b2f45;
+    border-radius:6px; padding:8px 10px; box-shadow:0 0 24px rgba(255,179,71,.12); }
+  #board h2 { margin:0 0 4px; font-size:11px; color:#ffb347; letter-spacing:.18em; display:flex; justify-content:space-between; }
+  #board table { width:100%; border-collapse:collapse; font-size:12px; color:#ffcf7a; }
+  #board td { padding:1px 0; white-space:nowrap; } #board td:last-child { text-align:right; }
+  .stats { position:fixed; left:16px; bottom:12px; display:flex; gap:6px; flex-wrap:wrap; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 9px; }
+  .stat b { font-size:15px; margin-right:4px; } .stat span { color:var(--dim); font-size:11px; }
   @media (max-width:700px) {
-    #board { width:auto; left:16px; bottom:auto; top:96px; max-height:30vh; overflow:hidden; }
-    #board tr:nth-child(n+5) { display:none; }
+    #board { left:16px; right:16px; width:auto; top:auto; bottom:92px; }
+    #board tr:nth-child(n+4) { display:none; }
     h1 { font-size:16px; }
   }
 </style>
@@ -46,88 +43,236 @@
 <body>
 <canvas id="c"></canvas>
 <header>
-  <h1>ℵ Metro<small>Alephium, live. Every block is a train, every transaction a passenger.</small></h1>
+  <h1>ℵ Central Station<small>Alephium, live. Every block is a train, every transaction a passenger.</small></h1>
+  <a class="badge" href="map.html">🗺 map view</a>
   <span id="mode" class="badge demo">● DEMO</span>
 </header>
+<div id="board"><h2><span>DEPARTURES</span><span id="clock"></span></h2><table id="rows"></table></div>
 <div class="stats">
-  <div class="stat"><b id="sBlocks">0</b><span>trains / min</span></div>
-  <div class="stat"><b id="sTx">0</b><span>passengers / min</span></div>
+  <div class="stat"><b id="sBlocks">0</b><span>trains/min</span></div>
+  <div class="stat"><b id="sTx">0</b><span>pax/min</span></div>
   <div class="stat"><b id="sWait">0</b><span>waiting</span></div>
-  <div class="stat"><b id="sLast">–</b><span>since last train</span></div>
+  <div class="stat"><b id="sLast">–</b><span>last train</span></div>
 </div>
-<div id="board"><h2>DEPARTURES</h2><table id="rows"></table></div>
 
 <script>
 const API = 'https://backend.mainnet.alephium.org';
 const G = 4;
-const COLORS = ['#ff5d8f', '#5dd6ff', '#ffd25d', '#8f7bff'];
-const NAMES = ['Rose Quarter', 'Harbour', 'Old Town', 'Violet Heights'];
+const COLORS = ['#ff5d8f', '#5dd6ff', '#ffd25d', '#a08bff'];
+const DEST = ['Rose Quarter', 'Harbour', 'Old Town', 'Violet Hts'];
+const SKIN = ['#f1c7a5', '#d9a07a', '#a86b48', '#6e4630', '#f5d6b8'];
+const rnd = n => Math.floor(Math.random() * n);
+const pick = a => a[rnd(a.length)];
 
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-let W, H, S, center, districts = [];
+let W, H, u, rows = [], skyline = [], stars = [];
+
 function layout() {
   const dpr = devicePixelRatio || 1;
   W = innerWidth; H = innerHeight;
   cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  S = Math.min(W, H);
-  center = { x: W / 2, y: H / 2 + (W < 700 ? 40 : 10) };
-  const R = S * 0.32;
-  districts = [...Array(G)].map((_, i) => {
-    const a = -Math.PI * 3 / 4 + i * Math.PI / 2;
-    return { x: center.x + Math.cos(a) * R, y: center.y + Math.sin(a) * R * 0.85 };
+  ctx.imageSmoothingEnabled = false;
+  const mobile = W < 700;
+  const top = H * (mobile ? 0.22 : 0.3), bottom = H - (mobile ? 205 : 50);
+  const rowH = (bottom - top) / G;
+  u = Math.max(1.5, Math.min(4, rowH / 34));
+  rows = [...Array(G)].map((_, i) => {
+    const y0 = top + i * rowH;
+    return { y0, h: rowH, floor: y0 + rowH * 0.55, track: y0 + rowH * 0.9 };
   });
+  // skyline buildings with fixed lit windows
+  skyline = []; let x = 0;
+  while (x < W) {
+    const w = 30 + rnd(70), h = 40 + rnd(top * 0.6);
+    const wins = [];
+    for (let wy = 8; wy < h - 8; wy += 10) for (let wx = 6; wx < w - 6; wx += 9) if (Math.random() < 0.3) wins.push([wx, wy, Math.random()]);
+    skyline.push({ x, w, h, wins }); x += w + 2;
+  }
+  stars = [...Array(90)].map(() => [Math.random() * W, Math.random() * top * 0.7, Math.random()]);
 }
 addEventListener('resize', layout); layout();
 
-// Point at t (0..1) along line f->t, plus its tangent angle.
-function pathPoint(f, to, t) {
-  const A = districts[f], B = districts[to];
-  if (f === to) { // loop line around the district
-    const r = S * 0.07, a0 = Math.atan2(A.y - center.y, A.x - center.x);
-    const a = a0 + t * Math.PI * 2, cx = A.x + Math.cos(a0) * r, cy = A.y + Math.sin(a0) * r;
-    return { x: cx - Math.cos(a) * r, y: cy - Math.sin(a) * r, ang: a - Math.PI / 2 };
-  }
-  // Express: curve through the central ℵ interchange, offset so both directions run side by side
-  const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy);
-  const off = 7, nx = -dy / len * off, ny = dx / len * off;
-  const P0 = { x: A.x + nx, y: A.y + ny }, P2 = { x: B.x + nx, y: B.y + ny };
-  const P1 = { x: (center.x * 1.2 + (A.x + B.x) / 2 * 0.8) / 2 + nx * 2, y: (center.y * 1.2 + (A.y + B.y) / 2 * 0.8) / 2 + ny * 2 };
-  const u = 1 - t;
-  return {
-    x: u * u * P0.x + 2 * u * t * P1.x + t * t * P2.x,
-    y: u * u * P0.y + 2 * u * t * P1.y + t * t * P2.y,
-    ang: Math.atan2(2 * u * (P1.y - P0.y) + 2 * t * (P2.y - P1.y), 2 * u * (P1.x - P0.x) + 2 * t * (P2.x - P1.x)),
-  };
+// ---- people ----
+// Each person waits on platform `f` for a train heading to `to`.
+const people = [];
+function spawnPerson(f, to) {
+  const onPlatform = people.filter(p => p.f === f && p.state !== 'board').length;
+  if (onPlatform >= 34) return false;
+  people.push({
+    f, to, x: -10 - rnd(40), tx: W * (0.12 + Math.random() * 0.62), state: 'walk',
+    speed: 0.035 + Math.random() * 0.03, skin: pick(SKIN), hat: Math.random() < 0.25,
+    bag: Math.random() < 0.3, phase: Math.random() * 10, a: 1,
+  });
+  return true;
 }
-function platform(f, to) { // where passengers queue for a line
-  const A = districts[f];
-  const p = pathPoint(f, to, f === to ? 0.5 : 0.12);
-  return { x: A.x + (p.x - A.x) * 0.55, y: A.y + (p.y - A.y) * 0.55 };
+function drawPerson(p, row, t) {
+  const s = u, x = Math.round(p.x), y = Math.round(row.floor);
+  const moving = p.state !== 'wait';
+  const step = moving ? Math.sin(t / 90 + p.phase) : 0;
+  ctx.globalAlpha = p.a;
+  // legs
+  ctx.fillStyle = '#20223a';
+  ctx.fillRect(x - s, y - 3 * s, s, 3 * s + (step > 0 ? 0 : -s * 0.5));
+  ctx.fillRect(x + s * 0.2, y - 3 * s, s, 3 * s + (step > 0 ? -s * 0.5 : 0));
+  // body, coloured by destination
+  ctx.fillStyle = COLORS[p.to];
+  ctx.fillRect(x - 1.5 * s, y - 7 * s, 3 * s, 4 * s);
+  if (p.bag) { ctx.fillStyle = '#7a5230'; ctx.fillRect(x + 1.5 * s, y - 5 * s, 1.5 * s, 2 * s); }
+  // head (idle people look around at their phones)
+  const bob = p.state === 'wait' ? Math.round(Math.sin(t / 700 + p.phase)) * s * 0.3 : 0;
+  ctx.fillStyle = p.skin; ctx.fillRect(x - s, y - 9.5 * s + bob, 2 * s, 2.5 * s);
+  if (p.hat) { ctx.fillStyle = '#111'; ctx.fillRect(x - 1.3 * s, y - 10.3 * s + bob, 2.6 * s, s); }
+  if (p.state === 'wait' && p.phase > 7) { ctx.fillStyle = '#9fe3ff'; ctx.fillRect(x + s, y - 7 * s, s * 0.8, s * 1.2); }
+  ctx.globalAlpha = 1;
 }
 
-// ---- state ----
-const waiting = Array.from({ length: G }, () => Array(G).fill(0));
-const trains = [], departures = [], history = [];
-let lastBlockAt = 0;
-
-function depart(b) {
+// ---- trains ----
+// One track per platform; trains queue if a platform is busy.
+const platforms = [...Array(G)].map(() => ({ train: null, queue: [] }));
+const CAR = () => 26 * u;
+function enqueueTrain(b) {
   const f = b.chainFrom, to = b.chainTo, pax = Math.max(0, (b.txNumber || 1) - 1); // minus coinbase
-  waiting[f][to] = Math.max(0, waiting[f][to] - pax);
-  trains.push({ f, to, pax, t: 0, ghost: pax === 0, dur: f === to ? 2600 : 3200 });
-  departures.unshift({ f, to, h: b.height, pax, ts: b.timestamp || Date.now() });
-  departures.length = Math.min(departures.length, 8);
-  history.push({ at: Date.now(), pax });
-  lastBlockAt = Date.now();
+  const cars = Math.min(6, 2 + Math.floor(pax / 6));
+  platforms[f].queue.push({ f, to, pax, cars, h: b.height, x: 0, state: 'in', t: 0 });
+  departures.unshift({ f, to, h: b.height, pax });
+  departures.length = Math.min(departures.length, 7);
+  history.push({ at: Date.now(), pax }); lastBlockAt = Date.now();
   renderBoard();
 }
-
-function renderBoard() {
-  document.getElementById('rows').innerHTML = departures.map(d =>
-    `<tr><td><span class="chip" style="background:${COLORS[d.f]}"></span>${d.f}→${d.to}<span class="chip" style="background:${COLORS[d.to]};margin-left:4px"></span></td>
-     <td>#${d.h}</td><td>${d.pax === 0 ? 'ghost' : d.pax + ' pax'}</td></tr>`).join('');
+function trainLen(tr) { return tr.cars * (CAR() + 2 * u); }
+function stepTrains(dt) {
+  platforms.forEach((pl, f) => {
+    if (!pl.train && pl.queue.length) { pl.train = pl.queue.shift(); }
+    const tr = pl.train; if (!tr) return;
+    const rush = Math.min(3, 1 + pl.queue.length * 0.6); // hurry when the platform is backed up
+    const stopX = W * 0.08, len = trainLen(tr);
+    tr.t += dt * rush;
+    if (tr.state === 'in') {
+      const d = 900, k = Math.min(1, tr.t / d), e = 1 - Math.pow(1 - k, 3);
+      tr.x = W + 20 + (stopX - W - 20) * e;
+      if (k >= 1) { tr.state = 'dwell'; tr.t = 0; board(tr); }
+    } else if (tr.state === 'dwell') {
+      tr.x = stopX;
+      if (tr.t > 1100) { tr.state = 'out'; tr.t = 0; }
+    } else {
+      const d = 900, k = Math.min(1, tr.t / d), e = k * k * k;
+      tr.x = stopX + (-len - 40 - stopX) * e;
+      if (k >= 1) pl.train = null;
+    }
+  });
+}
+function doors(tr) {
+  return [...Array(tr.cars)].map((_, c) => tr.x + c * (CAR() + 2 * u) + CAR() / 2);
+}
+function board(tr) {
+  const ds = doors(tr);
+  const waitingHere = people.filter(p => p.f === tr.f && p.to === tr.to && p.state !== 'board');
+  waitingHere.slice(0, tr.pax).forEach(p => {
+    p.state = 'board';
+    p.tx = ds.reduce((best, d) => Math.abs(d - p.x) < Math.abs(best - p.x) ? d : best, ds[0]);
+    p.speed = 0.09;
+  });
+}
+function drawTrain(tr, row, t) {
+  const ghost = tr.pax === 0, rush = tr.pax >= 25;
+  const ch = 15 * u, y = row.track - ch - u, col = COLORS[tr.to];
+  ctx.globalAlpha = ghost ? 0.35 + Math.sin(t / 150) * 0.1 : 1;
+  for (let c = 0; c < tr.cars; c++) {
+    const x = Math.round(tr.x + c * (CAR() + 2 * u)), w = CAR();
+    ctx.fillStyle = ghost ? '#cfd6ff' : rush ? '#e9b949' : '#d9dcea';
+    ctx.fillRect(x, y, w, ch);
+    ctx.fillStyle = col; ctx.fillRect(x, y + ch * 0.62, w, 2 * u);            // livery stripe
+    ctx.fillStyle = '#2a2e48'; ctx.fillRect(x, y + ch - u, w, u);              // skirt
+    // windows; lit, with silhouettes of passengers who boarded
+    const filled = Math.ceil(tr.pax / tr.cars);
+    for (let wi = 0; wi < 4; wi++) {
+      const wx = x + 2 * u + wi * 6 * u;
+      ctx.fillStyle = ghost ? '#1a1d33' : '#fff3c4';
+      ctx.fillRect(wx, y + 2.5 * u, 4.5 * u, 4.5 * u);
+      if (!ghost && wi < filled) { ctx.fillStyle = '#3a3150'; ctx.fillRect(wx + 1.5 * u, y + 4 * u, 1.6 * u, 3 * u); }
+    }
+    // door: opens during dwell
+    const open = tr.state === 'dwell' ? Math.min(1, tr.t / 250) : 0;
+    ctx.fillStyle = '#4b5070'; ctx.fillRect(x + w / 2 - 2.5 * u, y + 2 * u, 5 * u, ch - 3 * u);
+    if (open) { ctx.fillStyle = '#ffe89a'; ctx.fillRect(x + w / 2 - 2.5 * u * open, y + 2 * u, 5 * u * open, ch - 3 * u); }
+    // wheels
+    ctx.fillStyle = '#111';
+    ctx.fillRect(x + 3 * u, row.track - u, 3 * u, 1.5 * u); ctx.fillRect(x + w - 6 * u, row.track - u, 3 * u, 1.5 * u);
+  }
+  // nose + headlight + destination sign on the leading car
+  const nx = Math.round(tr.x);
+  ctx.fillStyle = ghost ? '#cfd6ff' : rush ? '#e9b949' : '#d9dcea';
+  ctx.beginPath(); ctx.moveTo(nx, y); ctx.lineTo(nx - 5 * u, y + ch * 0.55); ctx.lineTo(nx - 5 * u, y + ch); ctx.lineTo(nx, y + ch); ctx.fill();
+  ctx.fillStyle = '#fff8c0'; ctx.fillRect(nx - 5 * u, y + ch * 0.6, 1.5 * u, 1.5 * u);
+  if (tr.state !== 'dwell') { ctx.fillStyle = 'rgba(255,248,192,.12)'; ctx.beginPath(); ctx.moveTo(nx - 5 * u, y + ch * 0.65); ctx.lineTo(nx - 60 * u, y); ctx.lineTo(nx - 60 * u, row.track); ctx.fill(); }
+  ctx.fillStyle = '#111'; ctx.fillRect(nx + 2 * u, y - 5 * u, 22 * u, 4.5 * u);
+  ctx.fillStyle = col; ctx.font = `bold ${Math.round(3.4 * u)}px ui-monospace,monospace`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(ghost ? '👻 NOT IN SERVICE' : `→ ${DEST[tr.to]}`, nx + 3 * u, y - 2.7 * u);
+  ctx.globalAlpha = 1;
+  if (rush && tr.state === 'dwell') {
+    ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(4 * u)}px ui-monospace,monospace`;
+    ctx.fillText(`RUSH HOUR · ${tr.pax} pax`, nx + 2 * u, y - 9 * u);
+  }
 }
 
-// ---- data: live with demo fallback ----
+// ---- scenery ----
+function drawSky(t) {
+  const top = rows[0].y0;
+  const g = ctx.createLinearGradient(0, 0, 0, top);
+  g.addColorStop(0, '#05060d'); g.addColorStop(1, '#16123a');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, top);
+  stars.forEach(([x, y, s]) => { ctx.fillStyle = `rgba(255,255,255,${0.3 + 0.5 * Math.abs(Math.sin(t / 900 + s * 9))})`; ctx.fillRect(x, y, 1.5, 1.5); });
+  ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(W * 0.82, top * 0.3, Math.min(22, top * 0.12), 0, 7); ctx.fill();
+  skyline.forEach(b => {
+    const by = top - b.h;
+    ctx.fillStyle = '#0d0f1f'; ctx.fillRect(b.x, by, b.w, b.h);
+    b.wins.forEach(([wx, wy, s]) => { ctx.fillStyle = s > 0.85 ? '#a08bff' : '#ffd98a'; ctx.globalAlpha = 0.5 + 0.3 * s; ctx.fillRect(b.x + wx, by + wy, 4, 5); });
+    ctx.globalAlpha = 1;
+  });
+  // Proof-of-Less-Work wind turbines on the horizon
+  [0.3, 0.36].forEach((k, i) => {
+    const x = W * k, y = top - 70, a = t / (700 + i * 200);
+    ctx.strokeStyle = '#5dffa8'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, top); ctx.stroke();
+    for (let b = 0; b < 3; b++) { const ang = a + b * 2.094; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(ang) * 16, y + Math.sin(ang) * 16); ctx.stroke(); }
+  });
+  ctx.fillStyle = '#5dffa8'; ctx.font = '10px ui-monospace,monospace'; ctx.textAlign = 'center';
+  if (W >= 700) ctx.fillText('PoLW power', W * 0.33, top - 6);
+  // neon station sign with a little flicker
+  const flick = Math.random() < 0.015 ? 0.4 : 1;
+  const fs = Math.max(16, Math.min(34, W * 0.03));
+  ctx.font = `bold ${fs}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#a08bff'; ctx.shadowBlur = 18 * flick; ctx.fillStyle = `rgba(232,224,255,${flick})`;
+  ctx.fillText('ℵ ALEPHIUM CENTRAL', W * 0.5, top - fs * 0.9); ctx.shadowBlur = 0;
+}
+function drawPlatform(row, i, t) {
+  ctx.fillStyle = i % 2 ? '#0e1020' : '#101226'; ctx.fillRect(0, row.y0, W, row.h);
+  // back wall tiles + platform sign
+  ctx.fillStyle = '#171a33'; for (let x = 0; x < W; x += 18 * u) ctx.fillRect(x, row.y0 + 2, 16 * u, row.floor - row.y0 - 14 * u);
+  ctx.fillStyle = COLORS[i]; ctx.fillRect(W - 92 * u / 2, row.y0 + 3 * u, 40 * u, 7 * u);
+  ctx.fillStyle = '#0b0c12'; ctx.font = `bold ${Math.round(4 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(`PLATFORM ${i} · G${i}`, W - 92 * u / 2 + 20 * u, row.y0 + 6.5 * u);
+  // lamps
+  for (let x = 60; x < W; x += 180) {
+    const g = ctx.createRadialGradient(x, row.y0 + 6, 0, x, row.y0 + 6, row.h * 0.6);
+    g.addColorStop(0, 'rgba(255,220,150,.12)'); g.addColorStop(1, 'rgba(255,220,150,0)');
+    ctx.fillStyle = g; ctx.fillRect(x - row.h * 0.6, row.y0, row.h * 1.2, row.h);
+  }
+  // floor, yellow safety line, track bed, rails, sleepers
+  ctx.fillStyle = '#2a2d45'; ctx.fillRect(0, row.floor, W, row.track - row.floor - 6 * u);
+  ctx.fillStyle = '#e8c547'; ctx.fillRect(0, row.floor + 1.5 * u, W, u * 0.8);
+  ctx.fillStyle = '#05060b'; ctx.fillRect(0, row.track - 6 * u, W, row.y0 + row.h - row.track + 6 * u);
+  ctx.fillStyle = '#3b3f58'; for (let x = 0; x < W; x += 10 * u) ctx.fillRect(x, row.track + u, 6 * u, u);
+  ctx.fillStyle = '#8a8fa8'; ctx.fillRect(0, row.track, W, u * 0.8);
+}
+
+// ---- data: live, with demo fallback ----
+const departures = [], history = [];
+let lastBlockAt = 0;
+function renderBoard() {
+  document.getElementById('rows').innerHTML = departures.map(d =>
+    `<tr><td style="color:${COLORS[d.f]}">P${d.f}</td><td>→ ${DEST[d.to]}</td><td>#${d.h}</td><td>${d.pax ? d.pax + ' pax' : 'ghost 👻'}</td></tr>`).join('');
+}
 const modeEl = document.getElementById('mode');
 function setMode(m) {
   modeEl.className = 'badge ' + m;
@@ -147,8 +292,12 @@ async function pollBlocks() {
     const fresh = blocks.filter(b => !seen.has(b.hash)).sort((a, b) => a.timestamp - b.timestamp);
     const first = seen.size === 0;
     fresh.forEach(b => seen.add(b.hash));
-    // On first load only animate the newest few; afterwards stagger arrivals so they don't all leave at once
-    (first ? fresh.slice(-6) : fresh).forEach((b, i) => setTimeout(() => depart(b), i * 350));
+    (first ? fresh.slice(-4) : fresh).forEach((b, i) => setTimeout(() => {
+      // make sure riders exist on the platform so you see them board
+      const have = people.filter(p => p.f === b.chainFrom && p.to === b.chainTo && p.state !== 'board').length;
+      for (let k = have; k < Math.min(12, b.txNumber - 1); k++) spawnPerson(b.chainFrom, b.chainTo);
+      setTimeout(() => enqueueTrain(b), 1200);
+    }, i * 400));
     if (seen.size > 2000) seen = new Set([...seen].slice(-500));
     fails = 0; if (mode !== 'live') { mode = 'live'; setMode('live'); stopDemo(); }
   } catch (e) {
@@ -161,114 +310,49 @@ async function pollMempool() {
   if (mode !== 'live') return;
   try {
     const txs = await getJSON('/unconfirmed-transactions?page=1&limit=100');
-    for (let f = 0; f < G; f++) waiting[f].fill(0);
-    txs.forEach(tx => { if (tx.chainFrom != null) waiting[tx.chainFrom][tx.chainTo]++; });
-  } catch (e) { /* blocks poll handles mode changes */ }
+    txs.forEach(tx => {
+      if (tx.chainFrom == null) return;
+      const have = people.filter(p => p.f === tx.chainFrom && p.to === tx.chainTo && p.state !== 'board').length;
+      if (have < 8) spawnPerson(tx.chainFrom, tx.chainTo);
+    });
+  } catch (e) { /* pollBlocks handles mode changes */ }
 }
-
-let demoHeight = Array.from({ length: G * G }, () => 4_200_000 + Math.floor(Math.random() * 1000));
+const demoHeight = Array.from({ length: G * G }, () => 4_200_000 + rnd(1000));
 function startDemo() {
   if (demoTimer) return;
   demoTimer = setInterval(() => {
-    // new passengers arrive
-    for (let k = 0; k < 3; k++) { const f = rnd(G), to = Math.random() < 0.55 ? f : rnd(G); waiting[f][to]++; }
-    // ~2 blocks/s network-wide, like post-Danube mainnet
-    if (Math.random() < 0.5) {
+    for (let k = 0; k < 2; k++) { const f = rnd(G); spawnPerson(f, Math.random() < 0.4 ? f : rnd(G)); }
+    if (Math.random() < 0.5) { // ~2 blocks/s network-wide, like post-Danube mainnet
       const f = rnd(G), to = rnd(G), i = f * G + to;
-      const pax = Math.random() < 0.08 ? 0 : Math.max(1 + rnd(4), Math.min(waiting[f][to], 1 + rnd(14)));
-      depart({ chainFrom: f, chainTo: to, height: ++demoHeight[i], txNumber: pax + 1 });
+      const waitingHere = people.filter(p => p.f === f && p.to === to && p.state === 'wait').length;
+      const pax = Math.random() < 0.06 ? 0 : Math.random() < 0.04 ? 25 + rnd(30) : Math.max(1, waitingHere + rnd(3));
+      enqueueTrain({ chainFrom: f, chainTo: to, height: ++demoHeight[i], txNumber: pax + 1 });
     }
-  }, 250);
+  }, 500);
 }
 function stopDemo() { clearInterval(demoTimer); demoTimer = null; }
-const rnd = n => Math.floor(Math.random() * n);
-
 setMode('demo'); startDemo();
 if (!forceDemo) { pollBlocks(); setInterval(pollBlocks, 4000); setInterval(pollMempool, 5000); }
 
-// ---- drawing ----
-function drawLines(time) {
-  ctx.lineCap = 'round';
-  for (let f = 0; f < G; f++) for (let to = 0; to < G; to++) {
-    ctx.beginPath();
-    for (let i = 0; i <= 40; i++) { const p = pathPoint(f, to, i / 40); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
-    ctx.strokeStyle = COLORS[f] + '40'; ctx.lineWidth = 4; ctx.stroke();
-  }
-}
-function drawCentral(time) {
-  const pulse = 1 + Math.sin(time / 600) * 0.05, r = S * 0.06 * pulse;
-  const g = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, r * 2.2);
-  g.addColorStop(0, 'rgba(255,255,255,.18)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(center.x, center.y, r * 2.2, 0, 7); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(r * 1.3)}px serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.shadowColor = '#fff'; ctx.shadowBlur = 20; ctx.fillText('ℵ', center.x, center.y); ctx.shadowBlur = 0;
-}
-function drawDistricts() {
-  districts.forEach((d, i) => {
-    ctx.fillStyle = COLORS[i] + '22'; ctx.strokeStyle = COLORS[i];
-    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(d.x, d.y, S * 0.035, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = COLORS[i]; ctx.font = `bold ${Math.max(11, S * 0.022)}px ui-monospace,monospace`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('G' + i, d.x, d.y);
-    ctx.font = `${Math.max(10, S * 0.017)}px ui-monospace,monospace`; ctx.fillStyle = '#8b93b8';
-    const below = d.y > center.y;
-    ctx.fillText(NAMES[i], d.x, d.y + (below ? 1 : -1) * S * 0.16);
-  });
-}
-function drawPassengers(time) {
-  for (let f = 0; f < G; f++) for (let to = 0; to < G; to++) {
-    const n = waiting[f][to]; if (!n) continue;
-    const p = platform(f, to), shown = Math.min(n, 9);
-    for (let k = 0; k < shown; k++) {
-      const x = p.x + (k % 3 - 1) * 6, y = p.y + Math.floor(k / 3) * 7 + Math.sin(time / 300 + k) * 0.8;
-      ctx.fillStyle = COLORS[to]; ctx.beginPath(); ctx.arc(x, y - 3, 1.8, 0, 7); ctx.fill();
-      ctx.fillRect(x - 1.5, y - 1, 3, 4);
-    }
-    if (n > shown) { ctx.fillStyle = '#e8ecff'; ctx.font = '10px ui-monospace,monospace'; ctx.fillText('+' + (n - shown), p.x + 16, p.y); }
-  }
-}
-function drawTrains(dt) {
-  for (let i = trains.length - 1; i >= 0; i--) {
-    const tr = trains[i]; tr.t += dt / tr.dur;
-    if (tr.t >= 1) { trains.splice(i, 1); continue; }
-    const e = tr.t < .5 ? 2 * tr.t * tr.t : 1 - Math.pow(-2 * tr.t + 2, 2) / 2;
-    const cars = 3 + Math.min(3, Math.floor(tr.pax / 6));
-    for (let c = cars - 1; c >= 0; c--) {
-      const p = pathPoint(tr.f, tr.to, Math.max(0, e - c * 0.025));
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.ang);
-      ctx.globalAlpha = tr.ghost ? 0.35 + Math.sin(performance.now() / 120) * 0.15 : 1;
-      ctx.shadowColor = COLORS[tr.f]; ctx.shadowBlur = tr.ghost ? 4 : 14;
-      ctx.fillStyle = c === 0 ? '#fff' : COLORS[tr.f];
-      ctx.fillRect(-6, -3.5, 11, 7); ctx.restore();
-    }
-    if (tr.ghost) {
-      const p = pathPoint(tr.f, tr.to, e);
-      ctx.font = '14px serif'; ctx.textAlign = 'center'; ctx.fillText('👻', p.x, p.y - 12);
-    } else if (tr.pax >= 20) {
-      const p = pathPoint(tr.f, tr.to, e);
-      ctx.font = 'bold 10px ui-monospace,monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-      ctx.fillText(tr.pax + ' pax', p.x, p.y - 12);
-    }
-  }
-}
-// Proof of Less Work: a little windmill depot that spins gently
-function drawDepot(time) {
-  const x = W - 40, y = 92, a = time / 900;
-  ctx.strokeStyle = '#5dffa8'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 26); ctx.stroke();
-  for (let k = 0; k < 3; k++) {
-    const b = a + k * 2.094; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(b) * 14, y + Math.sin(b) * 14); ctx.stroke();
-  }
-  ctx.fillStyle = '#8b93b8'; ctx.font = '10px ui-monospace,monospace'; ctx.textAlign = 'right';
-  ctx.fillText('PoLW depot', x - 20, y + 4);
-}
-
+// ---- main loop ----
 let prev = performance.now();
 function frame(now) {
   const dt = Math.min(100, now - prev); prev = now;
-  ctx.fillStyle = '#07080f'; ctx.fillRect(0, 0, W, H);
-  drawLines(now); drawCentral(now); drawDistricts(); drawPassengers(now); drawTrains(dt);
-  if (W >= 700) drawDepot(now);
+  stepTrains(dt);
+  for (let i = people.length - 1; i >= 0; i--) {
+    const p = people[i], dx = p.tx - p.x;
+    if (Math.abs(dx) > 1) p.x += Math.sign(dx) * Math.min(Math.abs(dx), p.speed * dt * u);
+    else if (p.state === 'walk') p.state = 'wait';
+    else if (p.state === 'board') { p.a -= dt / 200; if (p.a <= 0) people.splice(i, 1); }
+    // waiting people shuffle about a little
+    if (p.state === 'wait' && Math.random() < 0.002) { p.tx = Math.max(10, Math.min(W * 0.8, p.x + (Math.random() - 0.5) * 40 * u)); p.state = 'walk'; }
+  }
+  drawSky(now);
+  rows.forEach((row, i) => {
+    drawPlatform(row, i, now);
+    people.filter(p => p.f === i).forEach(p => drawPerson(p, row, now));
+    if (platforms[i].train) drawTrain(platforms[i].train, row, now);
+  });
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -278,8 +362,9 @@ setInterval(() => {
   while (history.length && history[0].at < cut) history.shift();
   document.getElementById('sBlocks').textContent = history.length;
   document.getElementById('sTx').textContent = history.reduce((s, h) => s + h.pax, 0);
-  document.getElementById('sWait').textContent = waiting.flat().reduce((a, b) => a + b, 0);
+  document.getElementById('sWait').textContent = people.filter(p => p.state !== 'board').length;
   document.getElementById('sLast').textContent = lastBlockAt ? ((Date.now() - lastBlockAt) / 1000).toFixed(1) + 's' : '–';
+  document.getElementById('clock').textContent = new Date().toTimeString().slice(0, 8);
 }, 250);
 </script>
 </body>
