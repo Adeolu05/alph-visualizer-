@@ -1,0 +1,11 @@
+{
+  "name": "alph-central-station",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/live-feed.test.cjs",
+    "test:browser": "node --test tests/browser.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

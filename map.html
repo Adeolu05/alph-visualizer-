@@ -36,7 +36,17 @@
   #board table { width:100%; border-collapse:collapse; font-size:12px; }
   #board td { padding:2px 0; } #board td:last-child { text-align:right; color:var(--dim); }
   .chip { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; }
+  .network-health { position:fixed; left:16px; z-index:3; width:265px; max-width:calc(100% - 32px); background:var(--panel); border:1px solid var(--line); border-radius:8px; font-size:11px; }
+  .network-health summary { cursor:pointer; padding:7px 10px; color:#c3c9e8; }
+  .network-health.connected summary { color:#5dffa8; } .network-health.reconnecting summary { color:#ffd25d; }
+  .network-health .health-body { padding:0 10px 9px; }
+  .health-rates { display:flex; gap:18px; padding:4px 0 8px; } .health-rates b { display:block; font-size:18px; color:var(--ink); }
+  .health-rates span, .health-note { color:var(--dim); }
+  .health-row { display:flex; justify-content:space-between; gap:8px; margin:3px 0; }
+  .health-note { margin:8px 0 0; font-size:10px; } #healthError { color:#ff7a7a; }
   @media (max-width:700px) {
+    header { flex-wrap:wrap; gap:8px; }
+    h1 { flex-basis:100%; }
     #board { width:auto; left:16px; bottom:auto; top:96px; max-height:30vh; overflow:hidden; }
     #board tr:nth-child(n+5) { display:none; }
     h1 { font-size:16px; }
@@ -49,6 +59,20 @@
   <h1>ℵ Metro<small>Alephium, live. Every block is a train, every transaction a passenger.</small></h1>
   <a href="index.html" class="badge" style="color:#e8ecff;text-decoration:none">🚉 station view</a><span id="mode" class="badge demo">● DEMO</span>
 </header>
+<details id="networkHealth" class="network-health">
+  <summary>Network · <span id="healthConnection">connecting</span></summary>
+  <div class="health-body">
+    <div class="health-rates"><div><b id="healthBlocks">0</b><span>blocks / min</span></div><div><b id="healthTx">0</b><span>mined tx / min</span></div></div>
+    <div class="health-row"><span>Failed executions / min</span><span id="healthFailedTx">0</span></div>
+    <div class="health-row"><span>Block feed</span><span id="healthBlockFeed">pending</span></div>
+    <div class="health-row"><span>Pending tx feed</span><span id="healthTxFeed">pending</span></div>
+    <div class="health-row"><span>Last block received</span><span id="healthLastBlock">–</span></div>
+    <div class="health-row"><span>Reconnects</span><span id="healthReconnects">0</span></div>
+    <p id="healthError" hidden></p>
+    <p id="healthNote" class="health-note">Observed in the last 60s · rewards excluded</p>
+  </div>
+</details>
+
 <div class="stats">
   <div class="stat"><b id="sBlocks">0</b><span>trains / min</span></div>
   <div class="stat"><b id="sTx">0</b><span>passengers / min</span></div>
@@ -57,8 +81,8 @@
 </div>
 <div id="board"><h2>DEPARTURES</h2><table id="rows"></table></div>
 
+<script src="live-feed.js"></script>
 <script>
-const API = 'https://backend.mainnet.alephium.org';
 const G = 4;
 const COLORS = ['#ff5d8f', '#5dd6ff', '#ffd25d', '#8f7bff'];
 const NAMES = ['Rose Quarter', 'Harbour', 'Old Town', 'Violet Heights'];
@@ -106,15 +130,25 @@ function platform(f, to) { // where passengers queue for a line
 }
 
 // ---- state ----
+const pendingTransactions = new Map();
 const waiting = Array.from({ length: G }, () => Array(G).fill(0));
 const trains = [], departures = [], history = [];
 let lastBlockAt = 0;
 
 function depart(b) {
   const f = b.chainFrom, to = b.chainTo, pax = Math.max(0, (b.txNumber || 1) - 1); // minus coinbase
-  waiting[f][to] = Math.max(0, waiting[f][to] - pax);
-  trains.push({ f, to, pax, t: 0, ghost: pax === 0, dur: f === to ? 2600 : 3200 });
-  departures.unshift({ f, to, h: b.height, pax, ts: b.timestamp || Date.now() });
+  const failed = (b.transactions || []).filter(tx => tx.scriptExecutionOk === false).length;
+  if (b.transactions) {
+    b.transactions.forEach(tx => {
+      const route = pendingTransactions.get(tx.unsigned.txId);
+      if (route) {
+        waiting[route.chainFrom][route.chainTo] = Math.max(0, waiting[route.chainFrom][route.chainTo] - 1);
+        pendingTransactions.delete(tx.unsigned.txId);
+      }
+    });
+  } else waiting[f][to] = Math.max(0, waiting[f][to] - pax);
+  trains.push({ f, to, pax, failed, t: 0, ghost: pax === 0, dur: f === to ? 2600 : 3200 });
+  departures.unshift({ f, to, h: b.height, pax, failed, ts: b.timestamp || Date.now() });
   departures.length = Math.min(departures.length, 8);
   history.push({ at: Date.now(), pax });
   lastBlockAt = Date.now();
@@ -124,7 +158,7 @@ function depart(b) {
 function renderBoard() {
   document.getElementById('rows').innerHTML = departures.map(d =>
     `<tr><td><span class="chip" style="background:${COLORS[d.f]}"></span>${d.f}→${d.to}<span class="chip" style="background:${COLORS[d.to]};margin-left:4px"></span></td>
-     <td>#${d.h}</td><td>${d.pax === 0 ? '⛏ miner only' : '⛏+' + d.pax + ' pax'}</td></tr>`).join('');
+     <td>#${d.h}</td><td>${d.pax === 0 ? '⛏ miner only' : '⛏+' + d.pax + ' pax'}${d.failed ? ` · <span style="color:#ff7a7a">${d.failed} failed</span>` : ''}</td></tr>`).join('');
 }
 
 // ---- data: live with demo fallback ----
@@ -134,37 +168,7 @@ function setMode(m) {
   modeEl.textContent = { live: '● LIVE mainnet', demo: '● DEMO (simulated)', retry: '● reconnecting…' }[m];
 }
 const forceDemo = new URLSearchParams(location.search).has('demo');
-let mode = 'demo', seen = new Set(), fails = 0, demoTimer = null;
-
-async function getJSON(path) {
-  const r = await fetch(API + path, { cache: 'no-store' });
-  if (!r.ok) throw new Error(r.status);
-  return r.json();
-}
-async function pollBlocks() {
-  try {
-    const { blocks } = await getJSON('/blocks?page=1&limit=40');
-    const fresh = blocks.filter(b => !seen.has(b.hash)).sort((a, b) => a.timestamp - b.timestamp);
-    const first = seen.size === 0;
-    fresh.forEach(b => seen.add(b.hash));
-    // On first load only animate the newest few; afterwards stagger arrivals so they don't all leave at once
-    (first ? fresh.slice(-6) : fresh).forEach((b, i) => setTimeout(() => depart(b), i * 350));
-    if (seen.size > 2000) seen = new Set([...seen].slice(-500));
-    fails = 0; if (mode !== 'live') { mode = 'live'; setMode('live'); stopDemo(); }
-  } catch (e) {
-    fails++;
-    if (mode === 'live') setMode('retry');
-    if (fails >= 2 && mode !== 'demo') { mode = 'demo'; setMode('demo'); startDemo(); }
-  }
-}
-async function pollMempool() {
-  if (mode !== 'live') return;
-  try {
-    const txs = await getJSON('/unconfirmed-transactions?page=1&limit=100');
-    for (let f = 0; f < G; f++) waiting[f].fill(0);
-    txs.forEach(tx => { if (tx.chainFrom != null) waiting[tx.chainFrom][tx.chainTo]++; });
-  } catch (e) { /* blocks poll handles mode changes */ }
-}
+let mode = 'retry', demoTimer = null;
 
 let demoHeight = Array.from({ length: G * G }, () => 4_200_000 + Math.floor(Math.random() * 1000));
 function startDemo() {
@@ -183,8 +187,29 @@ function startDemo() {
 function stopDemo() { clearInterval(demoTimer); demoTimer = null; }
 const rnd = n => Math.floor(Math.random() * n);
 
-setMode('demo'); startDemo();
-if (!forceDemo) { pollBlocks(); setInterval(pollBlocks, 4000); setInterval(pollMempool, 5000); }
+setupNetworkHealth();
+if (forceDemo) { mode = 'demo'; setMode('demo'); startDemo(); renderNetworkHealth({ mode: 'demo', transport: 'disabled' }); }
+else startLiveFeed({
+  onHealth: renderNetworkHealth,
+  onBlock: depart,
+  onTransaction(tx, route) {
+    if (pendingTransactions.has(tx.unsigned.txId)) return;
+    pendingTransactions.set(tx.unsigned.txId, route);
+    waiting[route.chainFrom][route.chainTo]++;
+  },
+  onState(next) {
+    const previous = mode;
+    mode = next; setMode(next);
+    if (next === 'demo') startDemo();
+    else stopDemo();
+    if (next === 'live') {
+      if (previous === 'demo') {
+        trains.length = 0; departures.length = 0; history.length = 0;
+        pendingTransactions.clear(); waiting.forEach(row => row.fill(0)); renderBoard();
+      }
+    }
+  },
+});
 
 // ---- drawing ----
 function drawLines(time) {

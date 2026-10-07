@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Central Station browser checks</title>
+<style>html,body{margin:0;height:100%;background:#07080f;color:#e8ecff;font:13px monospace}nav{height:36px;padding:8px;box-sizing:border-box}a{color:#5dd6ff;margin-right:16px}iframe{width:100%;height:calc(100% - 36px);border:0}</style>
+<nav>Controlled feed checks · <a href="?view=index.html">station</a><a href="?view=map.html">metro</a></nav>
+<iframe title="App under test"></iframe>
+<script>
+(async () => {
+  const requested = new URLSearchParams(location.search).get('view');
+  const view = requested === 'map.html' ? requested : 'index.html';
+  const html = await (await fetch('../' + view)).text();
+  document.querySelector('iframe').srcdoc = html.replace('<head>', '<head><base href="../">')
+    .replace('<script src="live-feed.js">', '<script src="tests/websocket-fixture.js"><\/script><script src="live-feed.js">');
+})();
+</script>
