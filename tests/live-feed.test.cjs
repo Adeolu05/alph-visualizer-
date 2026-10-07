@@ -8,8 +8,10 @@ const root = path.join(__dirname, '..');
 function harness(search = '') {
   let now = 100000, id = 0;
   const timers = new Map(), listeners = {}, sockets = [], requests = [], elements = new Map();
+  const fetches = [];
+  let fetchMempool = async () => ({ ok: true, json: async () => [] });
   const context = vm.createContext({
-    console, URLSearchParams, AbortSignal, innerWidth: 1200, innerHeight: 800, devicePixelRatio: 1,
+    console, URLSearchParams, AbortSignal, AbortController, innerWidth: 1200, innerHeight: 800, devicePixelRatio: 1,
     location: { search }, performance: { now: () => now },
     Date: class extends Date { static now() { return now; } },
     setTimeout(fn, delay) { timers.set(++id, { fn, at: now + delay }); return id; },
@@ -25,7 +27,11 @@ function harness(search = '') {
       });
       return elements.get(id);
     } },
-    async fetch(url) { requests.push(url); throw new Error('Explorer unavailable'); },
+    async fetch(url, options) {
+      requests.push(url); fetches.push({ url, options });
+      if (url === mempoolUrl) return fetchMempool(options);
+      throw new Error('Explorer unavailable');
+    },
     WebSocket: class {
       constructor(url) { this.url = url; this.sent = []; sockets.push(this); }
       send(data) { this.sent.push(JSON.parse(data)); }
@@ -45,12 +51,13 @@ function harness(search = '') {
       timers.delete(next[0]); now = next[1].at;
       if (next[1].interval) timers.set(next[0], { ...next[1], at: now + next[1].interval });
       await next[1].fn();
-      await Promise.resolve();
+      for (let i = 0; i < 8; i++) await Promise.resolve();
     }
     now = target;
-    await Promise.resolve();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
   }
-  return { context, sockets, requests, elements, tick, listeners,
+  return { context, sockets, requests, fetches, elements, tick, listeners,
+    setMempool(handler) { fetchMempool = handler; },
     run(code) { return vm.runInContext(code, context); },
     load(file) {
       const html = fs.readFileSync(path.join(root, file), 'utf8');
@@ -71,6 +78,113 @@ function pendingTx(n = 11) {
 }
 const txNotification = tx => ({ method: 'subscription', params: { type: 'Tx', result: tx } });
 const notification = b => ({ method: 'subscription', params: { type: 'Block', result: { block: b } } });
+const mempoolUrl = 'https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions';
+const snapshot = (tx = pendingTx(), fromGroup = 1, toGroup = 2) => [{ fromGroup, toGroup, transactions: [tx] }];
+const response = data => ({ ok: true, json: async () => data });
+function start(h) {
+  h.run('globalThis.txs = []; globalThis.blocks = []; globalThis.health = null; globalThis.healthReports = []; globalThis.feed = startLiveFeed({ onBlock: b => blocks.push(b), onTransaction: (tx, route) => txs.push({ tx, route }), onState() {}, onHealth: value => { health = value; healthReports.push(value); } });');
+  h.sockets[0].open();
+}
+
+test('snapshots poll every second after subscribing, use explicit routes, and merge with tx events', async () => {
+  const h = harness();
+  h.setMempool(async () => {
+    assert.deepEqual(h.sockets[0].sent.map(m => m.params[0]), ['block', 'tx']);
+    return response(snapshot(pendingTx(), 3, 0));
+  });
+  start(h); await h.tick(0);
+  assert.equal(h.run('txs.length'), 1);
+  assert.equal(h.run('txs[0].route.chainFrom'), 3);
+  assert.equal(h.run('txs[0].route.chainTo'), 0);
+  h.sockets[0].message(txNotification(pendingTx()));
+  await h.tick(2000);
+  assert.equal(h.requests.length, 3);
+  assert.equal(h.run('txs.length'), 1);
+  assert.equal(h.run('health.mempoolFeed'), 'active');
+  assert.equal(h.run('health.mempoolCount'), 1);
+  assert.equal(h.fetches[0].options.cache, 'no-store');
+  h.sockets[0].message(notification(block(1, [pendingTx(), coinbase])));
+  await h.tick(1000);
+  assert.equal(h.run('txs.length'), 1, 'a stale snapshot cannot re-add a mined passenger');
+});
+
+test('blocks arriving during a snapshot prevent stale transactions from becoming pending', async () => {
+  const h = harness(); let resolve;
+  h.setMempool(() => new Promise(done => { resolve = done; }));
+  start(h);
+  h.sockets[0].message(notification(block(1, [pendingTx(), coinbase])));
+  resolve(response(snapshot())); await h.tick(0);
+  assert.equal(h.run('txs.length'), 0);
+  assert.equal(h.run('blocks.length'), 1);
+  assert.equal(h.run('health.mempoolFeed'), 'active');
+});
+
+test('slow polls never overlap, time out, and recover on the next tick', async () => {
+  const h = harness();
+  h.setMempool(({ signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+  }));
+  start(h); await h.tick(7999);
+  assert.equal(h.requests.length, 1);
+  h.setMempool(async () => response(snapshot()));
+  await h.tick(1);
+  assert.equal(h.run('healthReports.some(h => h.mempoolError === "Mempool request timed out")'), true);
+  assert.equal(h.fetches[0].options.signal.aborted, true);
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.run('health.mempoolFeed'), 'active');
+  assert.equal(h.run('health.mempoolError'), '');
+  assert.equal(h.run('txs.length'), 1);
+});
+
+test('disconnect and pagehide abort polls; reconnect and bfcache restoration fetch fresh snapshots', async () => {
+  const h = harness(); let resolve;
+  h.setMempool(() => new Promise(done => { resolve = done; }));
+  start(h); h.sockets[0].onclose();
+  assert.equal(h.fetches[0].options.signal.aborted, true);
+  resolve(response(snapshot())); await h.tick(0);
+  assert.equal(h.run('txs.length'), 0, 'responses from an old connection are ignored');
+  await h.tick(1500);
+  assert.equal(h.requests.length, 1, 'no polling while disconnected');
+  h.setMempool(async () => response(snapshot()));
+  h.sockets.at(-1).open(); await h.tick(0);
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.run('txs.length'), 1);
+  h.listeners.pagehide[0](); await h.tick(3000);
+  assert.equal(h.requests.length, 2);
+  h.listeners.pageshow[0]({ persisted: true });
+  h.sockets.at(-1).open(); await h.tick(0);
+  assert.equal(h.requests.length, 3);
+  h.run('feed.stop()'); await h.tick(3000);
+  assert.equal(h.requests.length, 3);
+});
+
+test('HTTP and malformed snapshot errors leave block events working and recover cleanly', async () => {
+  const h = harness(); h.setMempool(async () => ({ ok: false, status: 503 }));
+  start(h); await h.tick(0);
+  assert.equal(h.run('health.mempoolError'), 'Mempool: HTTP 503');
+  h.sockets[0].message(notification(block()));
+  assert.equal(h.run('blocks.length'), 1);
+  for (const invalid of [{}, snapshot(pendingTx(), 4, 0), [{ fromGroup: 0, toGroup: 0, transactions: [{}] }]]) {
+    h.setMempool(async () => response(invalid)); await h.tick(1000);
+    assert.equal(h.run('health.mempoolError'), 'Mempool: Invalid mempool response');
+    assert.equal(h.run('txs.length'), 0);
+  }
+  h.setMempool(async () => response([])); await h.tick(1000);
+  assert.equal(h.run('health.mempoolFeed'), 'active');
+  assert.equal(h.run('health.mempoolCount'), 0);
+  assert.equal(h.run('health.mempoolError'), '');
+});
+
+test('a transaction disappearing and returning in snapshots is neither confirmed nor duplicated', async () => {
+  const h = harness(); h.setMempool(async () => response(snapshot()));
+  start(h); await h.tick(0);
+  h.setMempool(async () => response([])); await h.tick(1000);
+  assert.equal(h.run('blocks.length'), 0);
+  assert.equal(h.run('health.mempoolCount'), 0);
+  assert.equal(h.run('streamTransactionInfo(txs[0].tx).status'), 'pending');
+  h.setMempool(async () => response(snapshot())); await h.tick(1000);
+  assert.equal(h.run('txs.length'), 1);
+});
 
 test('subscribes, validates messages, deduplicates blocks, and forwards tx events', async () => {
   const h = harness();
@@ -177,7 +291,7 @@ for (const file of ['index.html', 'map.html']) {
 }
 
 for (const file of ['index.html', 'map.html']) {
-  test(`${file}: blocks and pending passengers use only WebSocket data`, async () => {
+  test(`${file}: blocks use WebSocket data and mempool polling avoids the explorer backend`, async () => {
     const h = harness(); h.load(file);
     const ws = h.sockets[0]; ws.open(); ws.message(notification(block()));
     await h.tick(600);
@@ -206,12 +320,42 @@ for (const file of ['index.html', 'map.html']) {
     // Exercise recurring UI/price timers, reconnect, and demo fallback too.
     await h.tick(60000);
     assert.equal(h.requests.filter(url => url.includes('backend.mainnet.alephium.org')).length, 0);
-    if (file === 'map.html') assert.equal(h.requests.length, 0);
+    assert.ok(h.requests.includes(mempoolUrl));
+    if (file === 'map.html') assert.ok(h.requests.every(url => url === mempoolUrl));
   });
 
   test(`${file}: forced demo does not connect to the WebSocket`, () => {
     const h = harness('?demo'); h.load(file);
     assert.equal(h.sockets.length, 0);
+    assert.equal(h.requests.filter(url => url === mempoolUrl).length, 0);
     assert.equal(h.elements.get('mode').textContent, '● DEMO (simulated)');
+    assert.equal(h.elements.get('sMempool').textContent, '–');
+  });
+}
+
+for (const file of ['index.html', 'map.html']) {
+  test(`${file}: snapshot passengers board only their exact block and recover from demo`, async () => {
+    const h = harness(); h.setMempool(async () => response(snapshot())); h.load(file);
+    let ws = h.sockets[0]; ws.open(); await h.tick(0);
+    assert.equal(h.elements.get('mode').textContent, '● LIVE mainnet');
+    const count = () => h.run(file === 'index.html' ? 'people.filter(p => p.hash).length' : 'waiting[1][2]');
+    assert.equal(count(), 1);
+    await h.tick(2000); assert.equal(count(), 1);
+    assert.equal(h.elements.get('healthMempoolFeed').textContent, 'active');
+    assert.equal(h.elements.get('sMempool').textContent, '1');
+    ws.onclose(); await h.tick(15000);
+    assert.equal(h.elements.get('mode').textContent, '● DEMO (simulated)');
+    ws = h.sockets.at(-1); ws.open(); await h.tick(0);
+    assert.equal(h.elements.get('mode').textContent, '● LIVE mainnet');
+    assert.equal(count(), 1, 'known pending passengers survive demo recovery');
+    ws.message(notification(block(2, [{ ...pendingTx(), scriptExecutionOk: true }, coinbase])));
+    await h.tick(600);
+    if (file === 'index.html') {
+      assert.equal(h.run('platforms[1].queue[0].riders[0]'), pendingTx().unsigned.txId);
+      assert.equal(h.run('people[0].status'), 'succeeded');
+    } else assert.equal(count(), 0);
+    await h.tick(1000);
+    if (file === 'map.html') assert.equal(count(), 0);
+    else assert.equal(count(), 1, 'stale snapshot does not spawn another passenger');
   });
 }

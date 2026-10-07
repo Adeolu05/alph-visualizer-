@@ -90,6 +90,9 @@
     <div class="health-row"><span>Failed executions / min</span><span id="healthFailedTx">0</span></div>
     <div class="health-row"><span>Block feed</span><span id="healthBlockFeed">pending</span></div>
     <div class="health-row"><span>Pending tx feed</span><span id="healthTxFeed">pending</span></div>
+    <div class="health-row"><span>Mempool · every 1s</span><span id="healthMempoolFeed">pending</span></div>
+    <div class="health-row"><span>Latest snapshot tx</span><span id="healthMempoolCount">–</span></div>
+    <div class="health-row"><span>Last mempool snapshot</span><span id="healthLastMempool">–</span></div>
     <div class="health-row"><span>Last block received</span><span id="healthLastBlock">–</span></div>
     <div class="health-row"><span>Reconnects</span><span id="healthReconnects">0</span></div>
     <p id="healthError" hidden></p>
@@ -101,6 +104,7 @@
   <div class="stat"><b id="sBlocks">0</b><span>trains / min</span></div>
   <div class="stat"><b id="sTx">0</b><span>passengers / min</span></div>
   <div class="stat"><b id="sWait">0</b><span>waiting</span></div>
+  <div class="stat"><b id="sMempool" title="Waiting for a successful mempool snapshot">–</b><span>mempool tx</span></div>
   <div class="stat"><b id="sLast">–</b><span>since last train</span></div>
 </div>
 <div id="board"><h2>DEPARTURES</h2><table id="rows"></table></div>

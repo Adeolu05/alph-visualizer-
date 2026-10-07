@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ℵ Rail Yard · Alephium at platform level</title>
+  <meta name="description" content="Watch real Alephium transactions queue up and board block trains across four pixel-art platforms.">
+  <meta name="theme-color" content="#07080f">
+  <link rel="stylesheet" href="yard.css">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="yard.html" aria-label="ℵ Rail Yard home"><span class="brand-mark" aria-hidden="true">ℵ</span><span>Rail Yard<small>ALEPHIUM · LIVE BLOCKFLOW</small></span></a>
+    <nav class="view-switch" aria-label="Visualization"><a href="yard.html" aria-current="page">Rail yard</a><a href="index.html">Station</a><a href="map.html">Metro</a></nav>
+    <div class="header-actions"><span id="mode" class="mode connecting" role="status">Connecting…</span><a id="demoSwitch" class="text-button" href="yard.html?demo">Try demo ↗</a></div>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="yardTitle">
+      <div><p class="eyebrow">THE STATION, FROM A NEW PERSPECTIVE</p><h1 id="yardTitle">Four platforms. <span>One live network.</span></h1><p class="intro-copy">Every block is a train. Every transaction, a passenger. Watch them find their platform.</p></div>
+      <div class="network-facts"><span><b>4</b> platforms</span><span><b>16</b> routes</span><span class="fact-mainnet">Alephium mainnet</span></div>
+    </section>
+
+    <section class="stats" aria-label="Observed activity over the last minute">
+      <div class="stat"><span>TRAINS / MIN</span><b id="sBlocks">0</b><small>Blocks observed</small><i class="stat-icon" aria-hidden="true">↗</i></div>
+      <div class="stat"><span>PASSENGERS / MIN</span><b id="sTx">0</b><small>User transactions mined</small><i class="stat-icon" aria-hidden="true">↗</i></div>
+      <div class="stat"><span>ON THE PLATFORM</span><b id="sWait">0</b><small>Observed pending transactions</small><i class="stat-icon" aria-hidden="true">◷</i></div>
+      <div class="stat"><span>LAST TRAIN</span><b id="sLast">–</b><small id="statsNote">Waiting for the first train</small><i class="stat-icon" aria-hidden="true">↗</i></div>
+    </section>
+
+    <div class="workspace">
+      <section class="yard-stage" aria-label="Live rail yard visualization">
+        <div class="stage-toolbar"><div><span class="scene-dot" aria-hidden="true"></span><h2>The platforms</h2></div><label class="search"><span aria-hidden="true">⌕</span><input id="find" type="search" placeholder="Find a transaction or output address" aria-label="Find a transaction hash or output address" autocomplete="off" spellcheck="false"><span id="searchCount" aria-live="polite"></span></label><button id="pause" class="text-button" aria-pressed="false">Ⅱ Pause</button></div>
+        <div class="town-scene">
+        <canvas id="townSkyline" aria-label="One pixel-art town surrounding Central Station and its four platforms"></canvas>
+        <div class="district-grid" id="districts">
+          <article class="district" style="--district:#ff5d8f"><div class="district-heading"><span class="group-number">0</span><div><h3>Rose Quarter</h3><span>PLATFORM 0 · GROUP 0</span></div><span class="district-wait" id="waiting0">0 waiting</span></div><canvas id="street0" aria-label="Platform 0 track: click a passenger or train for details"></canvas><div class="district-footer"><span class="district-color"></span>Group 0<span id="last0">Awaiting a train</span></div></article>
+          <article class="district" style="--district:#5dd6ff"><div class="district-heading"><span class="group-number">1</span><div><h3>Harbour</h3><span>PLATFORM 1 · GROUP 1</span></div><span class="district-wait" id="waiting1">0 waiting</span></div><canvas id="street1" aria-label="Platform 1 track: click a passenger or train for details"></canvas><div class="district-footer"><span class="district-color"></span>Group 1<span id="last1">Awaiting a train</span></div></article>
+          <article class="district" style="--district:#ffd25d"><div class="district-heading"><span class="group-number">2</span><div><h3>Old Town</h3><span>PLATFORM 2 · GROUP 2</span></div><span class="district-wait" id="waiting2">0 waiting</span></div><canvas id="street2" aria-label="Platform 2 track: click a passenger or train for details"></canvas><div class="district-footer"><span class="district-color"></span>Group 2<span id="last2">Awaiting a train</span></div></article>
+          <article class="district" style="--district:#a08bff"><div class="district-heading"><span class="group-number">3</span><div><h3>Violet Heights</h3><span>PLATFORM 3 · GROUP 3</span></div><span class="district-wait" id="waiting3">0 waiting</span></div><canvas id="street3" aria-label="Platform 3 track: click a passenger or train for details"></canvas><div class="district-footer"><span class="district-color"></span>Group 3<span id="last3">Awaiting a train</span></div></article>
+        </div>
+        </div>
+        <div class="scene-help"><span>4 origin platforms · 16 routes · train stripes show the destination group. Click to inspect.</span><span id="sceneNote">Connecting to the live network</span></div>
+      </section>
+
+      <aside class="sidebar" aria-label="Station information">
+        <section class="panel departures"><div class="panel-heading"><h2>Latest departures</h2><span class="live-dot" aria-hidden="true"></span></div><p class="panel-copy">Fresh blocks, straight from the network.</p><table aria-label="Latest block trains"><thead><tr><th scope="col">ROUTE</th><th scope="col">BLOCK</th><th scope="col">PAX</th></tr></thead><tbody id="rows"><tr><td colspan="3" class="empty">The first train is on its way.<small>New blocks will appear here.</small></td></tr></tbody></table><div class="panel-foot">Pax = user transactions · miner rides along</div></section>
+
+        <details class="panel color-legend" open><summary>Color legend<span class="summary-note">4 groups</span></summary><div class="legend-body"><p class="panel-copy">Platforms show the origin group. Passenger clothes and train stripes show the destination. Every origin can reach all four groups: e.g. G0→G0, G0→G1, G0→G2 or G0→G3.</p><ul class="group-legend"><li><i style="--swatch:#ff5d8f"></i><span>Rose Quarter</span><b>G0 · Pink</b></li><li><i style="--swatch:#5dd6ff"></i><span>Harbour</span><b>G1 · Blue</b></li><li><i style="--swatch:#ffd25d"></i><span>Old Town</span><b>G2 · Yellow</b></li><li><i style="--swatch:#a08bff"></i><span>Violet Heights</span><b>G3 · Purple</b></li></ul><ul class="symbol-legend"><li><span class="symbol gold">⛏</span>Orange vest, yellow hat · miner reward tx</li><li><span class="symbol gold">◆</span>Gold coat · ≥10,000 ALPH in outputs</li><li><span class="symbol green">▣</span>Green bag · carries tokens</li><li><span class="symbol purple">⚙</span>Gear · contract transaction</li><li><span class="symbol red">×</span>Red cross · failed execution</li><li><span class="symbol green">✓</span>Mined · boarding its train</li><li><span class="symbol green">↓</span>Green arrow · search match</li></ul></div></details>
+
+        <details id="networkHealth" class="panel network-health"><summary>Network health<span id="healthConnection" class="summary-note">connecting</span></summary><div class="health-body"><div class="health-rates"><div><b id="healthBlocks">0</b><span>blocks / min</span></div><div><b id="healthTx">0</b><span>mined tx / min</span></div></div><div class="health-row"><span>Failed executions / min</span><span id="healthFailedTx">0</span></div><div class="health-row"><span>Block feed</span><span id="healthBlockFeed">pending</span></div><div class="health-row"><span>Pending tx feed</span><span id="healthTxFeed">pending</span></div><div class="health-row"><span>Last block received</span><span id="healthLastBlock">–</span></div><div class="health-row"><span>Reconnects</span><span id="healthReconnects">0</span></div><div class="health-row"><span>Confirmation recovery</span><span id="reconciliationStatus">Off in demo</span></div><div class="health-row"><span>Recovered transactions</span><span id="recoveredTx">0</span></div><p id="healthError" hidden></p><p id="healthNote" class="health-note">Observed in the last 60s · rewards excluded</p></div></details>
+      </aside>
+    </div>
+    <footer class="app-footer"><span><b>ℵ</b> A station built on blockflow.</span><span id="footerNote">Observed transactions, not a full mempool snapshot.</span><a href="https://explorer.alephium.org" target="_blank" rel="noopener">Alephium explorer ↗</a></footer>
+  </main>
+
+  <dialog id="inspector" aria-labelledby="inspectTitle"><div class="inspector-heading"><span class="eyebrow">JOURNEY DETAILS</span><button id="closeInspector" class="close-button" aria-label="Close details">×</button></div><h2 id="inspectTitle"></h2><div id="inspectBody"></div></dialog>
+  <script src="live-feed.js"></script>
+  <script src="wraps/wraps.js"></script>
+  <script src="yard.js"></script>
+</body>
+</html>

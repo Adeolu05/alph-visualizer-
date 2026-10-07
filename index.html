@@ -53,7 +53,7 @@
   #board td { padding:1px 0; white-space:nowrap; } #board td:last-child { text-align:right; }
   #ticker { margin-top:6px; padding-top:5px; border-top:1px dashed #2b2f45; color:#ffb347; font-size:11px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:opacity .3s; }
-  .stats { position:fixed; left:16px; bottom:12px; display:flex; gap:6px; flex-wrap:wrap; }
+  .stats { position:fixed; left:16px; bottom:12px; display:flex; gap:6px; flex-wrap:wrap; max-width:calc(100% - 32px); }
   .stat { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 9px; }
   .stat b { font-size:15px; margin-right:4px; } .stat span { color:var(--dim); font-size:11px; }
   #tip { position:fixed; display:none; z-index:5; background:var(--panel); border:1px solid #a08bff; border-radius:8px;
@@ -105,6 +105,9 @@
     <div class="health-row"><span>Failed executions / min</span><span id="healthFailedTx">0</span></div>
     <div class="health-row"><span>Block feed</span><span id="healthBlockFeed">pending</span></div>
     <div class="health-row"><span>Pending tx feed</span><span id="healthTxFeed">pending</span></div>
+    <div class="health-row"><span>Mempool · every 1s</span><span id="healthMempoolFeed">pending</span></div>
+    <div class="health-row"><span>Latest snapshot tx</span><span id="healthMempoolCount">–</span></div>
+    <div class="health-row"><span>Last mempool snapshot</span><span id="healthLastMempool">–</span></div>
     <div class="health-row"><span>Last block received</span><span id="healthLastBlock">–</span></div>
     <div class="health-row"><span>Reconnects</span><span id="healthReconnects">0</span></div>
     <p id="healthError" hidden></p>
@@ -118,6 +121,7 @@
   <div class="stat"><b id="sTx">0</b><span>pax/min</span></div>
   <div class="stat"><b id="sAlph">0</b><span id="sAlphLbl">outputs/min</span></div>
   <div class="stat"><b id="sWait">0</b><span>waiting</span></div>
+  <div class="stat"><b id="sMempool" title="Waiting for a successful mempool snapshot">–</b><span>mempool tx</span></div>
   <div class="stat"><b id="sLast">–</b><span>last train</span></div>
 </div>
 <div id="tip"></div>

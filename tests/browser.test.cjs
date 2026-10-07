@@ -40,6 +40,11 @@ for (const file of ['index.html', 'map.html']) for (const width of [1440, 390]) 
       const page = await context.newPage(), observed = monitor(page);
       await page.route('https://api.coingecko.com/**', route => route.abort());
       await page.clock.install();
+      let mempool = [userTx], mempoolRequests = 0;
+      await page.route('https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions', route => {
+        mempoolRequests++;
+        return route.fulfill({ json: mempool.length ? [{ fromGroup: 1, toGroup: 2, transactions: mempool }] : [] });
+      });
       let online = true;
       const connections = [];
       await page.routeWebSocket('**/events', ws => {
@@ -56,6 +61,8 @@ for (const file of ['index.html', 'map.html']) for (const width of [1440, 390]) 
       await page.clock.runFor(700);
       assert.equal(await page.locator('#healthBlocks').textContent(), '1');
       assert.equal(await page.locator('#healthTxFeed').textContent(), 'active');
+      await page.waitForFunction(() => document.getElementById('sMempool').textContent === '1');
+      assert.equal(await page.locator('#healthMempoolFeed').textContent(), 'active');
       if (width === 390) await page.locator('#networkHealth summary').click();
       assert.equal(await page.locator('#networkHealth').getAttribute('open'), '');
       const panel = await page.locator('#networkHealth').boundingBox();
@@ -71,11 +78,14 @@ for (const file of ['index.html', 'map.html']) for (const width of [1440, 390]) 
       ws.send(JSON.stringify({ method: 'subscription', params: { type: 'Tx', result: userTx } }));
       await page.clock.runFor(1000);
       assert.equal(await page.locator('#sWait').textContent(), '1');
+      assert.ok(mempoolRequests >= 2, 'mempool is fetched initially and every second');
       ws.send(JSON.stringify(block(2, [{ ...userTx, scriptExecutionOk: true }, coinbase])));
+      mempool = [];
       await page.clock.runFor(5000);
       assert.equal(await page.locator('#healthBlocks').textContent(), '2');
       assert.equal(await page.locator('#healthTx').textContent(), '1');
       assert.equal(await page.locator('#sWait').textContent(), '0');
+      await page.waitForFunction(() => document.getElementById('sMempool').textContent === '0');
       const failedTx = { ...userTx, unsigned: { ...userTx.unsigned, txId: 'c'.repeat(64) }, scriptExecutionOk: false };
       ws.send(JSON.stringify(block(3, [failedTx, coinbase])));
       await page.clock.runFor(1000);
@@ -87,6 +97,7 @@ for (const file of ['index.html', 'map.html']) for (const width of [1440, 390]) 
       await page.clock.fastForward(16000);
       assert.match(await page.locator('#mode').textContent(), /DEMO/);
       assert.match(await page.locator('#healthNote').textContent(), /Simulated traffic excluded/);
+      assert.equal(await page.locator('#sMempool').textContent(), '–');
       online = true;
       await page.clock.fastForward(30000);
       await page.clock.runFor(1000);
@@ -105,6 +116,7 @@ for (const file of ['index.html', 'map.html']) {
       const page = await context.newPage(), observed = monitor(page);
       await page.goto(`${base}/${file}`);
       await page.waitForFunction(() => Number(document.getElementById('healthBlocks').textContent) >= 3, { timeout: 60000 });
+      await page.waitForFunction(() => document.getElementById('healthMempoolFeed').textContent === 'active', { timeout: 15000 });
       await page.locator('#networkHealth').evaluate(panel => { panel.open = true; });
       await page.waitForFunction(() => document.getElementById('rows').children.length >= 1);
       await fs.mkdir(path.join(root, 'artifacts/browser'), { recursive: true });
