@@ -18,7 +18,7 @@
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
     font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; overflow:hidden; }
-  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:crosshair; }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:default; }
   header { position:fixed; top:14px; left:16px; right:16px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; pointer-events:none; }
   header > * { pointer-events:auto; }
   h1 { margin:0 auto 0 0; font-size:20px; letter-spacing:.04em; text-shadow:0 0 12px #8f7bff; pointer-events:none; }
@@ -58,7 +58,7 @@
   <a class="badge" href="map.html">🗺 map</a>
   <span id="mode" class="badge demo">● DEMO</span>
 </header>
-<div id="board"><h2><span>DEPARTURES</span><span id="clock"></span></h2><table id="rows"></table><div id="ticker">Welcome to ℵ Central. Mind the gap.</div></div>
+<div id="board"><h2><span>DEPARTURES</span><span id="clock"></span></h2><table id="rows"></table><div id="ticker">👆 Tap a passenger or train to open it in the explorer.</div></div>
 <div class="stats">
   <div class="stat"><b id="sBlocks">0</b><span>trains/min</span></div>
   <div class="stat"><b id="sTx">0</b><span>pax/min</span></div>
@@ -174,6 +174,7 @@ function drawPerson(p, row, t) {
     for (let k = 0; k < 2; k++) { const a = t / 200 + k * Math.PI; ctx.fillRect(x + Math.cos(a) * 2 * s - s / 2, y - 12 * s - Math.abs(Math.sin(a)) * 3 * s, s, s); }
   }
   ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  if (p === hovered) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x - 3 * s, y - 12 * s, 6 * s, 12.5 * s); }
   if (p.whale && p.state === 'wait') {
     ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(3.2 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center';
     ctx.fillText(`🐋 ${fmt(p.alph)}`, x, y - 15 * s);
@@ -204,8 +205,8 @@ function enqueueTrain(b, riders = []) {
   const f = b.chainFrom, to = b.chainTo, pax = Math.max(0, (b.txNumber || 1) - 1); // minus coinbase
   const alph = riders.reduce((s, r) => s + (r.alph || 0), 0);
   const cars = Math.min(6, 2 + Math.floor(pax / 6));
-  platforms[f].queue.push({ f, to, pax, cars, h: b.height, hash: b.hash, riders: riders.map(r => r.hash), alph, x: W + 50, state: 'in', t: 0 });
-  departures.unshift({ f, to, h: b.height, pax, hash: b.hash });
+  platforms[f].queue.push({ f, to, pax, cars, h: b.height, hash: b.fake ? null : b.hash, riders: riders.map(r => r.hash), alph, x: W + 50, state: 'in', t: 0 });
+  departures.unshift({ f, to, h: b.height, pax, hash: b.fake ? null : b.hash });
   departures.length = Math.min(departures.length, 7);
   history.push({ at: Date.now(), pax, alph }); lastBlockAt = Date.now();
   renderBoard();
@@ -390,7 +391,7 @@ const tip = document.getElementById('tip');
 function showTip(p, cx, cy) {
   const link = p.hash ? `<br><a href="${EXPLORER}/transactions/${p.hash}" target="_blank" rel="noopener">open in explorer ↗</a>` : '';
   tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[p.to]}">${p.whale ? '🐋 Whale' : p.contract ? '⚙️ Contract call' : 'Passenger'}</b><br>
-    ${p.hash ? 'tx ' + short(p.hash) + '<br>' : '<i>simulated</i><br>'}
+    ${p.hash ? 'tx ' + short(p.hash) + '<br>' : '<i>Demo passenger. On live mainnet this links to the real transaction.</i><br>'}
     Platform ${p.f} → ${DEST[p.to]} (G${p.to})<br>
     ${p.alph ? fmt(p.alph) + ' ALPH' : ''}${p.tokens ? ' + tokens' : ''}
     ${p.from ? '<br>from ' + short(p.from) : ''}${link}`;
@@ -398,10 +399,44 @@ function showTip(p, cx, cy) {
   tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
   tip.querySelector('.x').onclick = () => tip.style.display = 'none';
 }
+// Hit-testing: a generous box around each passenger's body, then the train on that platform.
+let hovered = null;
+function personAt(cx, cy) {
+  let best = null, bd = Infinity;
+  people.forEach(p => {
+    if (p.state === 'board') return;
+    const s = p.whale ? u * 1.6 : u, fy = rows[p.f].floor;
+    const pad = Math.max(6, 2 * s); // easier to hit on phones
+    if (cx < p.x - 3 * s - pad || cx > p.x + 3 * s + pad || cy < fy - 13 * s - pad || cy > fy + pad) return;
+    const d = Math.abs(cx - p.x); if (d < bd) { bd = d; best = p; }
+  });
+  return best;
+}
+function trainAt(cx, cy) {
+  for (let f = 0; f < G; f++) {
+    const tr = platforms[f].train, r = rows[f]; if (!tr) continue;
+    if (cx >= tr.x - 5 * u && cx <= tr.x + trainLen(tr) && cy >= r.track - 22 * u && cy <= r.track + u) return tr;
+  }
+  return null;
+}
+function showTrainTip(tr, cx, cy) {
+  tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[tr.to]}">${tr.pax ? '🚆 Train' : '👻 Ghost train'} #${tr.h}</b><br>
+    Platform ${tr.f} → ${DEST[tr.to]} (G${tr.f}→G${tr.to})<br>${tr.pax} passenger${tr.pax === 1 ? '' : 's'}${tr.alph ? ' · ' + fmt(tr.alph) + ' ALPH' : ''}<br>
+    ${tr.hash ? `<a href="${EXPLORER}/blocks/${tr.hash}" target="_blank" rel="noopener">open block in explorer ↗</a>` : '<i>Demo train. On live mainnet this links to the block.</i>'}`;
+  tip.style.display = 'block';
+  tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
+  tip.querySelector('.x').onclick = () => tip.style.display = 'none';
+}
 cv.addEventListener('click', e => {
-  let best = null, bd = 18 * u;
-  people.forEach(p => { if (p.state === 'board') return; const r = rows[p.f]; const d = Math.hypot(p.x - e.clientX, r.floor - 5 * u - e.clientY); if (d < bd) { bd = d; best = p; } });
-  if (best) showTip(best, e.clientX, e.clientY); else tip.style.display = 'none';
+  const p = personAt(e.clientX, e.clientY);
+  if (p) return showTip(p, e.clientX, e.clientY);
+  const tr = trainAt(e.clientX, e.clientY);
+  if (tr) return showTrainTip(tr, e.clientX, e.clientY);
+  tip.style.display = 'none';
+});
+cv.addEventListener('mousemove', e => {
+  hovered = personAt(e.clientX, e.clientY);
+  cv.style.cursor = hovered || trainAt(e.clientX, e.clientY) ? 'pointer' : 'default';
 });
 // Search: highlight matching passengers now, look the address/tx up on the explorer, and keep
 // watching so the next matching passenger gets the green arrow as they walk in.
@@ -469,7 +504,7 @@ findEl.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(
 // ---- data: live mainnet, with demo fallback ----
 function renderBoard() {
   document.getElementById('rows').innerHTML = departures.map(d =>
-    `<tr><td style="color:${COLORS[d.f]}">P${d.f}</td><td>→ ${DEST[d.to]}</td><td>#${d.h}</td><td>${d.pax ? d.pax + ' pax' : 'ghost 👻'}</td></tr>`).join('');
+    `<tr><td style="color:${COLORS[d.f]}">P${d.f}</td><td>→ ${DEST[d.to]}</td><td>${d.hash ? `<a href="${EXPLORER}/blocks/${d.hash}" target="_blank" rel="noopener" style="color:inherit">#${d.h} ↗</a>` : '#' + d.h}</td><td>${d.pax ? d.pax + ' pax' : 'ghost 👻'}</td></tr>`).join('');
 }
 const modeEl = document.getElementById('mode');
 function setMode(m) {
@@ -551,7 +586,7 @@ function startDemo() {
       const pax = Math.random() < 0.06 ? 0 : Math.random() < 0.04 ? 25 + rnd(30) : Math.max(1, waitingHere.length + rnd(3));
       for (let k = waitingHere.length; k < Math.min(pax, 12); k++) spawnPerson(f, to, { late: true, alph: demoAmount() });
       const riders = people.filter(p => p.f === f && p.to === to && p.state !== 'board').slice(0, pax);
-      enqueueTrain({ chainFrom: f, chainTo: to, height: ++demoHeight[i], txNumber: pax + 1, hash: fakeHash() }, riders.map(p => ({ hash: p.hash, alph: p.alph })));
+      enqueueTrain({ chainFrom: f, chainTo: to, height: ++demoHeight[i], txNumber: pax + 1, hash: fakeHash(), fake: true }, riders.map(p => ({ hash: p.hash, alph: p.alph })));
     }
   }, 500);
 }
