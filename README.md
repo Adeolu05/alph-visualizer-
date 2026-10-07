@@ -29,3 +29,9 @@ Run the feed and view integration checks with `node --test tests/live-feed.test.
 For repeatable Chromium checks, run `npm ci`, `npx playwright install chromium`, then `npm run test:browser`. These cover desktop/mobile layouts, exact passenger boarding, failed execution indicators, reconnect/demo recovery, and zero automatic explorer backend requests. Set `ALPH_LIVE_BROWSER=1` to also check the public WebSocket endpoint and save screenshots to `artifacts/browser/`.
 
 For interactive checks in an existing Chrome browser, serve the repo locally and open `tests/browser-harness.html`. Its station/metro views use controlled WebSocket payloads, with buttons for pending transactions, successful/failed execution, disconnect, and recovery. The production views never load this fixture.
+
+## Train wraps (community art & sponsors)
+
+About 1 in 5 trains is painted with a design from `wraps/`. Clicking a wrapped train credits the artist ("🎨 Art by …"), or "📢 Sponsored by …" for ads, with an optional https link on the card (never on the image itself). `special` wraps only run on milestone blocks.
+
+To add one: put a **104 × 60 px PNG** per car side in `wraps/` (2–6 panels for a design that spans the train) and add an entry to `wraps/wraps.js` (id, type `art`/`ad`/`special`, panels, credit, optional link, weight, active dates). Images live in the repo and every wrap is reviewed by hand before it goes live.
