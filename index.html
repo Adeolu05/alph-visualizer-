@@ -45,6 +45,14 @@
   #tip { position:fixed; display:none; z-index:5; background:var(--panel); border:1px solid #a08bff; border-radius:8px;
     padding:8px 10px; font-size:12px; max-width:260px; box-shadow:0 6px 24px rgba(0,0,0,.5); }
   #tip a { color:#5dd6ff; } #tip .x { float:right; cursor:pointer; color:var(--dim); margin-left:8px; }
+  .network-health { position:fixed; left:16px; z-index:3; width:265px; max-width:calc(100% - 32px); background:var(--panel); border:1px solid var(--line); border-radius:8px; font-size:11px; }
+  .network-health summary { cursor:pointer; padding:7px 10px; color:#c3c9e8; }
+  .network-health.connected summary { color:#5dffa8; } .network-health.reconnecting summary { color:#ffd25d; }
+  .network-health .health-body { padding:0 10px 9px; }
+  .health-rates { display:flex; gap:18px; padding:4px 0 8px; } .health-rates b { display:block; font-size:18px; color:var(--ink); }
+  .health-rates span, .health-note { color:var(--dim); }
+  .health-row { display:flex; justify-content:space-between; gap:8px; margin:3px 0; }
+  .health-note { margin:8px 0 0; font-size:10px; } #healthError { color:#ff7a7a; }
   @media (max-width:700px) {
     #board { left:16px; right:16px; width:auto; top:auto; bottom:92px; }
     #board tr:nth-child(n+4) { display:none; }
@@ -63,16 +71,31 @@
   <a id="price" class="badge" href="https://www.coingecko.com/en/coins/alephium" target="_blank" rel="noopener" title="ALPH price (CoinGecko)">ALPH $…</a>
   <span id="mode" class="badge demo">● DEMO</span>
 </header>
+<details id="networkHealth" class="network-health">
+  <summary>Network · <span id="healthConnection">connecting</span></summary>
+  <div class="health-body">
+    <div class="health-rates"><div><b id="healthBlocks">0</b><span>blocks / min</span></div><div><b id="healthTx">0</b><span>mined tx / min</span></div></div>
+    <div class="health-row"><span>Failed executions / min</span><span id="healthFailedTx">0</span></div>
+    <div class="health-row"><span>Block feed</span><span id="healthBlockFeed">pending</span></div>
+    <div class="health-row"><span>Pending tx feed</span><span id="healthTxFeed">pending</span></div>
+    <div class="health-row"><span>Last block received</span><span id="healthLastBlock">–</span></div>
+    <div class="health-row"><span>Reconnects</span><span id="healthReconnects">0</span></div>
+    <p id="healthError" hidden></p>
+    <p id="healthNote" class="health-note">Observed in the last 60s · rewards excluded</p>
+  </div>
+</details>
+
 <div id="board"><h2><span>DEPARTURES</span><span id="clock"></span></h2><table id="rows"></table><div id="ticker">👆 Tap a passenger or train to open it in the explorer.</div></div>
 <div class="stats">
   <div class="stat"><b id="sBlocks">0</b><span>trains/min</span></div>
   <div class="stat"><b id="sTx">0</b><span>pax/min</span></div>
-  <div class="stat"><b id="sAlph">0</b><span id="sAlphLbl">ALPH/min</span></div>
+  <div class="stat"><b id="sAlph">0</b><span id="sAlphLbl">outputs/min</span></div>
   <div class="stat"><b id="sWait">0</b><span>waiting</span></div>
   <div class="stat"><b id="sLast">–</b><span>last train</span></div>
 </div>
 <div id="tip"></div>
 
+<script src="live-feed.js"></script>
 <script>
 const API = 'https://backend.mainnet.alephium.org';
 const EXPLORER = 'https://explorer.alephium.org';
@@ -141,12 +164,13 @@ function spawnPerson(f, to, tx = {}) {
   const late = !!tx.late;
   const p = {
     f, to, hash: tx.hash, alph: tx.alph || 0, from: tx.from || '', dests: tx.dests || [], tokens: !!tx.tokens, contract: !!tx.contract,
+    status: tx.status,
     x: late ? W + 10 : -10 - rnd(40), tx: W * (0.12 + Math.random() * 0.62), state: 'walk',
     speed: late ? 0.16 : 0.035 + Math.random() * 0.03, skin: pick(SKIN), hat: Math.random() < 0.25,
     bag: Math.random() < 0.3, phase: Math.random() * 10, a: 1,
   };
   p.whale = p.alph >= WHALE;
-  if (p.whale) { p.hat = true; p.speed *= 0.7; announce(`🐋 A whale carrying ${fmt(p.alph)} ALPH${withUsd(p.alph)} has entered platform ${f}.`); }
+  if (p.whale) { p.hat = true; p.speed *= 0.7; announce(`🐋 A whale with ${fmt(p.alph)} ALPH in outputs${withUsd(p.alph)} has entered platform ${f}.`); }
   p.found = matches(p);
   if (p.found) { lastAnnounce = 0; announce(`🎯 Your passenger just walked onto platform ${f}! Look for the green arrow.`); }
   people.push(p);
@@ -188,6 +212,10 @@ function drawPerson(p, row, t) {
     for (let k = 0; k < 2; k++) { const a = t / 200 + k * Math.PI; ctx.fillRect(x + Math.cos(a) * 2 * s - s / 2, y - 12 * s - Math.abs(Math.sin(a)) * 3 * s, s, s); }
   }
   ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  if (p.status === 'failed') {
+    ctx.fillStyle = '#ff7a7a'; ctx.font = `bold ${Math.round(4 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center';
+    ctx.fillText('✕', x, y - 14 * s);
+  }
   if (p === hovered) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x - 3 * s, y - 12 * s, 6 * s, 12.5 * s); }
   if (p.whale && p.state === 'wait') {
     ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(3.2 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center';
@@ -218,12 +246,15 @@ const departures = [], history = [];
 function enqueueTrain(b, riders = [], miner = null) {
   const f = b.chainFrom, to = b.chainTo, pax = Math.max(0, (b.txNumber || 1) - 1); // minus coinbase
   const alph = riders.reduce((s, r) => s + (r.alph || 0), 0);
+  const failed = riders.filter(r => r.status === 'failed').length;
   const cars = Math.min(6, 2 + Math.floor(pax / 6));
-  platforms[f].queue.push({ f, to, pax, cars, h: b.height, hash: b.fake ? null : b.hash, riders: riders.map(r => r.hash), alph, miner, x: W + 50, state: 'in', t: 0 });
-  departures.unshift({ f, to, h: b.height, pax, hash: b.fake ? null : b.hash });
+  const train = { f, to, pax, cars, failed, h: b.height, hash: b.fake ? null : b.hash, riders: riders.map(r => r.hash), alph, miner, x: W + 50, state: 'in', t: 0 };
+  platforms[f].queue.push(train);
+  departures.unshift({ f, to, h: b.height, pax, failed, hash: b.fake ? null : b.hash });
   departures.length = Math.min(departures.length, 7);
-  history.push({ at: Date.now(), pax, alph }); lastBlockAt = Date.now();
+  history.push({ at: Date.now(), pax, alph, hash: train.hash }); lastBlockAt = Date.now();
   renderBoard();
+  return train;
 }
 function trainLen(tr) { return tr.cars * (CAR() + 2 * u); }
 function stepTrains(dt) {
@@ -235,6 +266,7 @@ function stepTrains(dt) {
       // Every block has a coinbase (mining reward) tx: its miner jogs in from the mine shaft to catch the train.
       people.push({
         f, to: tr.to, miner: tr, hash: tr.miner?.hash, alph: tr.miner?.alph || 0, from: '', dests: [],
+        status: tr.miner?.status,
         x: -12, tx: W * 0.08 + CAR() * 0.5 + rnd(CAR()), state: 'walk', speed: 0.14, skin: pick(SKIN), phase: Math.random() * 10, a: 1,
       });
       if (tr.pax === 0 && Math.random() < 0.3) announce(`⛏ Platform ${f}: just the miner on this one, riding to ${DEST[tr.to]} with the block reward.`);
@@ -419,10 +451,11 @@ function chime(f) {
 const tip = document.getElementById('tip');
 function showTip(p, cx, cy) {
   const link = p.hash ? `<br><a href="${EXPLORER}/transactions/${p.hash}" target="_blank" rel="noopener">open in explorer ↗</a>` : '';
-  tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[p.to]}">${p.miner ? '⛏ Miner (block reward)' : p.whale ? '🐋 Whale' : p.contract ? '⚙️ Contract call' : 'Passenger'}</b><br>
+  tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[p.to]}">${p.miner ? '⛏ Miner (block reward)' : p.whale ? '🐋 Large outputs' : p.contract ? '⚙️ Contract call' : 'Passenger'}</b><br>
     ${p.hash ? 'tx ' + short(p.hash) + '<br>' : '<i>Demo passenger. On live mainnet this links to the real transaction.</i><br>'}
+    ${p.hash ? `<span style="color:${p.status === 'failed' ? '#ff7a7a' : p.status === 'succeeded' ? '#5dffa8' : '#ffd25d'}">${transactionStatusLabel(p.status)}</span><br>` : ''}
     Platform ${p.f} → ${DEST[p.to]} (G${p.to})<br>
-    ${p.alph ? fmt(p.alph) + ' ALPH' + withUsd(p.alph) : ''}${p.tokens ? ' + tokens' : ''}
+    ${p.alph ? fmt(p.alph) + ' ALPH' + withUsd(p.alph) + (p.miner ? '' : ' in outputs (includes change)') : ''}${p.tokens ? ' + tokens' : ''}
     ${p.from ? '<br>from ' + short(p.from) : ''}${link}`;
   tip.style.display = 'block';
   tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
@@ -451,17 +484,14 @@ function trainAt(cx, cy) {
 function showTrainTip(tr, cx, cy) {
   const m = tr.miner;
   const minerLine = m ? `⛏ Miner reward: ${fmt(m.alph)} ALPH${withUsd(m.alph)}${m.hash ? ` · <a href="${EXPLORER}/transactions/${m.hash}" target="_blank" rel="noopener">tx ↗</a>` : ''}`
-    : tr.hash ? '⛏ Miner reward: loading…' : '⛏ 1 miner (block reward)';
+    : tr.hash ? '⛏ Miner reward unavailable' : '⛏ 1 miner (block reward)';
   tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[tr.to]}">${tr.pax ? '🚆 Train' : '⛏ Miner-only express'} #${tr.h}</b><br>
-    Platform ${tr.f} → ${DEST[tr.to]} (G${tr.f}→G${tr.to})<br>${minerLine}<br>${tr.pax + 1} aboard: ⛏ 1 miner + ${tr.pax} passenger${tr.pax === 1 ? '' : 's'}${tr.alph ? ' · ' + fmt(tr.alph) + ' ALPH' + withUsd(tr.alph) : ''}<br>
+    Platform ${tr.f} → ${DEST[tr.to]} (G${tr.f}→G${tr.to})<br>${minerLine}<br>${tr.pax + 1} aboard: ⛏ 1 miner + ${tr.pax} passenger${tr.pax === 1 ? '' : 's'}${tr.alph ? ' · ' + fmt(tr.alph) + ' ALPH in outputs' + withUsd(tr.alph) : ''}<br>
+    ${tr.failed ? `<span style="color:#ff7a7a">✕ ${tr.failed} transaction execution${tr.failed > 1 ? 's' : ''} failed</span><br>` : ''}
     ${tr.hash ? `<a href="${EXPLORER}/blocks/${tr.hash}" target="_blank" rel="noopener">open block in explorer ↗</a>` : '<i>Demo train. On live mainnet this links to the block.</i>'}`;
   tip.style.display = 'block';
   tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
   tip.querySelector('.x').onclick = () => tip.style.display = 'none';
-  if (!m && tr.hash) getJSON(`/blocks/${tr.hash}/transactions?page=1&limit=40`).then(txs => {
-    tr.miner = coinbaseOf(txs) || { alph: 0 };
-    if (tip.style.display === 'block') showTrainTip(tr, cx, cy);
-  }).catch(() => {});
 }
 cv.addEventListener('click', e => {
   const p = personAt(e.clientX, e.clientY);
@@ -512,7 +542,7 @@ async function lookup(q, seq) {
       }).join('');
       showPanel(`<b>Address ${short(q)}</b><br>Balance: <b>${fmt(atto(bal.balance))} ALPH</b>${withUsd(atto(bal.balance))}${atto(bal.lockedBalance) ? ` (${fmt(atto(bal.lockedBalance))} locked)` : ''}
         <br><br><b>Recent trips</b>${list || '<br>No transactions yet.'}
-        <br><br>👀 Watching the gates: next time this address sends or receives, its passenger gets a green arrow.
+        <br><br>👀 Watching the gates: when this address appears in transaction outputs, its passenger gets a green arrow.
         <br><a href="${EXPLORER}/addresses/${q}" target="_blank" rel="noopener">open in explorer ↗</a>`);
     } else {
       const tx = await getJSON(`/transactions/${q}`);
@@ -540,7 +570,7 @@ findEl.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(
 // ---- data: live mainnet, with demo fallback ----
 function renderBoard() {
   document.getElementById('rows').innerHTML = departures.map(d =>
-    `<tr><td style="color:${COLORS[d.f]}">P${d.f}</td><td>→ ${DEST[d.to]}</td><td>${d.hash ? `<a href="${EXPLORER}/blocks/${d.hash}" target="_blank" rel="noopener" style="color:inherit">#${d.h} ↗</a>` : '#' + d.h}</td><td>${d.pax + 1} pax</td></tr>`).join('');
+    `<tr><td style="color:${COLORS[d.f]}">P${d.f}</td><td>→ ${DEST[d.to]}</td><td>${d.hash ? `<a href="${EXPLORER}/blocks/${d.hash}" target="_blank" rel="noopener" style="color:inherit">#${d.h} ↗</a>` : '#' + d.h}</td><td>${d.pax + 1} pax${d.failed ? ` · <span style="color:#ff7a7a">${d.failed} failed</span>` : ''}</td></tr>`).join('');
 }
 const modeEl = document.getElementById('mode');
 function setMode(m) {
@@ -548,68 +578,26 @@ function setMode(m) {
   modeEl.textContent = { live: '● LIVE mainnet', demo: '● DEMO (simulated)', retry: '● reconnecting…' }[m];
 }
 const forceDemo = new URLSearchParams(location.search).has('demo');
-let mode = 'demo', seen = new Set(), fails = 0, demoTimer = null;
+let mode = 'retry', demoTimer = null;
 
 async function getJSON(path) {
-  const r = await fetch(API + path, { cache: 'no-store' });
+  const r = await fetch(API + path, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
 const atto = s => { try { return Number(BigInt(s) / 10n ** 14n) / 1e4; } catch { return 0; } };
-// Turn an explorer transaction into passenger details. Value = ALPH sent to addresses other than the sender (i.e. not change).
-function txInfo(tx, chainFrom, chainTo) {
-  const from = tx.inputs?.[0]?.address || '';
-  const outs = (tx.outputs || []).filter(o => o.address !== from);
-  return {
-    hash: tx.hash, from, chainFrom, chainTo,
-    alph: outs.filter(o => o.type !== 'ContractOutput').reduce((s, o) => s + atto(o.attoAlphAmount || '0'), 0),
-    dests: outs.map(o => o.address),
-    tokens: outs.some(o => o.tokens?.length),
-    contract: (tx.outputs || []).some(o => o.type === 'ContractOutput'),
-  };
-}
-const coinbaseOf = txs => {
-  const cb = txs.find(tx => tx.coinbase);
-  return cb && { hash: cb.hash, alph: (cb.outputs || []).reduce((s, o) => s + atto(o.attoAlphAmount || '0'), 0) };
-};
-async function arrive(b) {
-  let riders = [], miner = null;
-  if (b.txNumber > 1) {
-    try {
-      const txs = await getJSON(`/blocks/${b.hash}/transactions?page=1&limit=40`);
-      miner = coinbaseOf(txs);
-      riders = txs.filter(tx => !tx.coinbase && tx.inputs?.length).map(tx => txInfo(tx, b.chainFrom, b.chainTo));
-    } catch { /* fall back to anonymous riders */ }
-  }
-  // Passengers we already saw in the mempool are on the platform; anyone else runs in late from the gate.
-  riders.forEach(r => { if (!people.some(p => p.hash === r.hash)) spawnPerson(b.chainFrom, b.chainTo, { ...r, late: true }); });
-  const named = riders.length, anon = Math.max(0, b.txNumber - 1 - named);
-  const have = people.filter(p => p.f === b.chainFrom && p.to === b.chainTo && !p.hash && p.state !== 'board').length;
-  for (let k = have; k < Math.min(12, anon); k++) spawnPerson(b.chainFrom, b.chainTo, { late: true });
-  setTimeout(() => enqueueTrain(b, riders, miner), 600);
-}
-async function pollBlocks() {
-  try {
-    const { blocks } = await getJSON('/blocks?page=1&limit=40');
-    const fresh = blocks.filter(b => b.mainChain !== false && !seen.has(b.hash)).sort((a, b) => a.timestamp - b.timestamp);
-    const first = seen.size === 0;
-    fresh.forEach(b => seen.add(b.hash));
-    (first ? fresh.slice(-4) : fresh).forEach((b, i) => setTimeout(() => arrive(b), i * 450));
-    if (seen.size > 2000) seen = new Set([...seen].slice(-500));
-    fails = 0;
-    if (mode !== 'live') { mode = 'live'; setMode('live'); stopDemo(); people.length = 0; announce('📡 Connected to Alephium mainnet. Trains are real blocks now.'); }
-  } catch (e) {
-    fails++;
-    if (mode === 'live') setMode('retry');
-    if (fails >= 2 && mode !== 'demo') { mode = 'demo'; setMode('demo'); startDemo(); }
-  }
-}
-async function pollMempool() {
+function arrive(b) {
   if (mode !== 'live') return;
-  try {
-    const txs = await getJSON('/mempool/transactions?page=1&limit=100');
-    txs.forEach(tx => { if (tx.chainFrom != null) spawnPerson(tx.chainFrom, tx.chainTo, txInfo(tx, tx.chainFrom, tx.chainTo)); });
-  } catch { /* pollBlocks handles mode changes */ }
+  const rawMiner = b.transactions.find(tx => tx.unsigned.inputs.length === 0 && !tx.unsigned.scriptOpt && !tx.contractInputs?.length);
+  const miner = rawMiner && streamTransactionInfo(rawMiner, { mined: true });
+  const riders = b.transactions.filter(tx => tx !== rawMiner).map(tx => streamTransactionInfo(tx, { mined: true }));
+  // Pending passengers board by exact transaction ID; unseen ones run in late.
+  riders.forEach(r => {
+    const p = people.find(p => p.hash === r.hash);
+    if (p) { Object.assign(p, r, { f: b.chainFrom, to: b.chainTo }); p.whale = p.alph >= WHALE; p.found = matches(p); }
+    else spawnPerson(b.chainFrom, b.chainTo, { ...r, late: true });
+  });
+  setTimeout(() => { if (mode === 'live') enqueueTrain(b, riders, miner); }, 600);
 }
 const demoHeight = Array.from({ length: G * G }, () => 4_200_000 + rnd(1000));
 const fakeHash = () => [...Array(64)].map(() => '0123456789abcdef'[rnd(16)]).join('');
@@ -632,8 +620,30 @@ function startDemo() {
   }, 500);
 }
 function stopDemo() { clearInterval(demoTimer); demoTimer = null; }
-setMode('demo'); startDemo();
-if (!forceDemo) { pollBlocks(); setInterval(pollBlocks, 4000); setInterval(pollMempool, 3000); }
+setupNetworkHealth();
+if (forceDemo) { mode = 'demo'; setMode('demo'); startDemo(); renderNetworkHealth({ mode: 'demo', transport: 'disabled' }); }
+else startLiveFeed({
+  onHealth: renderNetworkHealth,
+  onBlock: arrive,
+  onTransaction(tx, { chainFrom, chainTo }) {
+    spawnPerson(chainFrom, chainTo, streamTransactionInfo(tx));
+  },
+  onState(next) {
+    const previous = mode;
+    mode = next; setMode(next);
+    if (next === 'demo') startDemo();
+    else stopDemo();
+    if (next === 'live') {
+      if (previous === 'demo') {
+        people.length = 0; history.length = 0; departures.length = 0; lastBlockAt = 0;
+        platforms.forEach(pl => { pl.train = null; pl.queue.length = 0; });
+        renderBoard();
+      }
+      lastAnnounce = 0;
+      announce('📡 Connected to Alephium mainnet. Trains are real blocks now.');
+    }
+  },
+});
 
 // ---- live ALPH price (CoinGecko, free, browser-friendly). Polled once a minute to stay inside rate limits. ----
 const priceEl = document.getElementById('price');
@@ -698,7 +708,7 @@ setInterval(() => {
   document.getElementById('sTx').textContent = history.reduce((s, h) => s + h.pax, 0);
   const moved = history.reduce((s, h) => s + h.alph, 0);
   document.getElementById('sAlph').textContent = alphUsd ? usd(moved) : fmt(moved);
-  document.getElementById('sAlphLbl').textContent = alphUsd ? (W < 700 ? 'moved/min' : `moved/min (${fmt(moved)} ALPH)`) : 'ALPH/min';
+  document.getElementById('sAlphLbl').textContent = alphUsd ? (W < 700 ? 'outputs/min' : `outputs/min (${fmt(moved)} ALPH)`) : 'ALPH outputs/min';
   document.getElementById('sWait').textContent = people.filter(p => p.state !== 'board').length;
   document.getElementById('sLast').textContent = lastBlockAt ? ((Date.now() - lastBlockAt) / 1000).toFixed(1) + 's' : '–';
   document.getElementById('clock').textContent = new Date().toTimeString().slice(0, 8);
