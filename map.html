@@ -19,13 +19,27 @@
   html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
     font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; overflow:hidden; }
   canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
-  header { position:fixed; top:16px; left:16px; right:16px; display:flex; gap:12px;
+  header { position:fixed; top:16px; left:16px; right:16px; z-index:4; display:flex; gap:12px;
     align-items:flex-start; justify-content:space-between; pointer-events:none; }
   h1 { margin:0; font-size:20px; letter-spacing:.04em; }
   h1 small { display:block; font-size:12px; color:var(--dim); font-weight:normal; letter-spacing:0; }
   .badge { pointer-events:auto; padding:4px 10px; border-radius:999px; font-size:12px;
     border:1px solid var(--line); background:var(--panel); white-space:nowrap; }
   .badge.live { color:#5dffa8; } .badge.demo { color:#ffd25d; } .badge.retry { color:#ff7a7a; }
+  .color-legend { pointer-events:auto; z-index:4; }
+  .color-legend summary { list-style:none; cursor:pointer; }
+  .color-legend summary::-webkit-details-marker { display:none; }
+  .color-legend summary::after { content:' ▾'; }
+  .color-legend[open] summary::after { content:' ▴'; }
+  .color-legend summary:focus-visible { outline:2px solid #8f7bff; outline-offset:3px; }
+  .legend-body { position:absolute; top:calc(100% + 8px); right:0; width:300px; max-width:100%;
+    max-height:calc(100dvh - 180px); overflow:auto; padding:12px; background:#0e101e;
+    border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.5); font-size:11px; }
+  .legend-body p { margin:0 0 8px; color:#c3c9e8; }
+  .legend-body ul { list-style:none; margin:0; padding:0; }
+  .legend-body li { display:flex; align-items:center; gap:8px; margin:5px 0; }
+  .legend-swatch { width:10px; height:10px; flex:none; border-radius:2px; background:var(--swatch); }
+  .legend-body .legend-special { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); }
   .stats { position:fixed; left:16px; bottom:16px; display:flex; gap:8px; flex-wrap:wrap; max-width:calc(100% - 32px); }
   .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 10px; }
   .stat b { display:block; font-size:18px; }
@@ -58,6 +72,16 @@
 <header>
   <h1>ℵ Metro<small>Alephium, live. Every block is a train, every transaction a passenger.</small></h1>
   <a href="index.html" class="badge" style="color:#e8ecff;text-decoration:none">🚉 station view</a><span id="mode" class="badge demo">● DEMO</span>
+  <details class="color-legend">
+    <summary class="badge">Color legend</summary>
+    <div class="legend-body">
+      <p>Districts, lines and train cars show the origin group. Waiting passengers show the destination.</p>
+      <ul id="legendGroups" aria-label="Group colors"></ul>
+      <ul class="legend-special" aria-label="Special colors">
+        <li><span class="legend-swatch" style="--swatch:#ffcc00" aria-hidden="true"></span>Gold lead car · miner / block reward</li>
+      </ul>
+    </div>
+  </details>
 </header>
 <details id="networkHealth" class="network-health">
   <summary>Network · <span id="healthConnection">connecting</span></summary>
@@ -66,6 +90,9 @@
     <div class="health-row"><span>Failed executions / min</span><span id="healthFailedTx">0</span></div>
     <div class="health-row"><span>Block feed</span><span id="healthBlockFeed">pending</span></div>
     <div class="health-row"><span>Pending tx feed</span><span id="healthTxFeed">pending</span></div>
+    <div class="health-row"><span>Mempool · every 1s</span><span id="healthMempoolFeed">pending</span></div>
+    <div class="health-row"><span>Latest snapshot tx</span><span id="healthMempoolCount">–</span></div>
+    <div class="health-row"><span>Last mempool snapshot</span><span id="healthLastMempool">–</span></div>
     <div class="health-row"><span>Last block received</span><span id="healthLastBlock">–</span></div>
     <div class="health-row"><span>Reconnects</span><span id="healthReconnects">0</span></div>
     <p id="healthError" hidden></p>
@@ -77,6 +104,7 @@
   <div class="stat"><b id="sBlocks">0</b><span>trains / min</span></div>
   <div class="stat"><b id="sTx">0</b><span>passengers / min</span></div>
   <div class="stat"><b id="sWait">0</b><span>waiting</span></div>
+  <div class="stat"><b id="sMempool" title="Waiting for a successful mempool snapshot">–</b><span>mempool tx</span></div>
   <div class="stat"><b id="sLast">–</b><span>since last train</span></div>
 </div>
 <div id="board"><h2>DEPARTURES</h2><table id="rows"></table></div>
@@ -86,6 +114,8 @@
 const G = 4;
 const COLORS = ['#ff5d8f', '#5dd6ff', '#ffd25d', '#8f7bff'];
 const NAMES = ['Rose Quarter', 'Harbour', 'Old Town', 'Violet Heights'];
+document.getElementById('legendGroups').innerHTML = COLORS.map((color, i) =>
+  `<li><span class="legend-swatch" style="--swatch:${color}" aria-hidden="true"></span>${['Pink', 'Blue', 'Yellow', 'Purple'][i]} · G${i} · ${NAMES[i]}</li>`).join('');
 
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let W, H, S, center, districts = [];

@@ -1,29 +1,109 @@
 // Shared by both views; classic scripts also work when opened directly from disk.
 function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} }) {
   const url = 'wss://ws.fullnode.alephium.notrustverify.ch/events';
+  const mempoolUrl = 'https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions';
   const seen = new Set();
-  const seenTransactions = new Set();
+  const pendingTransactions = new Map();
+  const minedTransactions = new Set();
   let socket, retryTimer, watchdog, demoTimer, attempt = 0, stopped = false, state;
   let healthTimer, transport = 'connecting', blockFeed = 'pending', txFeed = 'pending', reconnects = 0;
   let lastBlockAt = 0, lastTxAt = 0, lastError = '';
+  let mempoolTimer, mempoolRequest, mempoolTimeout, mempoolEpoch = 0;
+  let mempoolFeed = 'pending', lastMempoolAt = 0, mempoolCount = 0, mempoolError = '';
   const samples = [];
 
   function reportHealth() {
     const now = Date.now();
     while (samples.length && samples[0].at <= now - 60000) samples.shift();
     onHealth({ mode: state, transport, blockFeed, txFeed, reconnects, lastBlockAt, lastTxAt, lastError,
+      mempoolFeed, lastMempoolAt, mempoolCount, mempoolError,
       blocks: samples.length, transactions: samples.reduce((sum, sample) => sum + sample.transactions, 0),
       failedTransactions: samples.reduce((sum, sample) => sum + sample.failed, 0) });
   }
 
   function setState(next) {
     if (next === state) return;
+    const previous = state;
     state = next;
     onState(next);
+    // Views clear simulated traffic on recovery. Restore real waiting passengers.
+    if (previous === 'demo' && next === 'live') {
+      for (const { tx, route } of pendingTransactions.values()) onTransaction(tx, route);
+    }
     reportHealth();
+  }
+  function establishLive() {
+    attempt = 0;
+    clearTimeout(demoTimer); demoTimer = null;
+    setState('live');
+  }
+  function publishTransaction(tx, route) {
+    const id = tx.unsigned.txId;
+    if (!route || minedTransactions.has(id)) return;
+    establishLive();
+    if (pendingTransactions.has(id)) return;
+    pendingTransactions.set(id, { tx, route });
+    onTransaction(tx, route);
+  }
+  function stopMempool() {
+    mempoolEpoch++;
+    clearInterval(mempoolTimer);
+    clearTimeout(mempoolTimeout);
+    mempoolRequest?.abort();
+    mempoolRequest = null;
+    mempoolFeed = 'disconnected';
+  }
+  async function pollMempool() {
+    if (stopped || transport !== 'connected' || mempoolRequest) return;
+    const epoch = mempoolEpoch;
+    const controller = new AbortController();
+    mempoolRequest = controller;
+    mempoolTimeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(mempoolUrl, { cache: 'no-store', signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const snapshot = await response.json();
+      if (stopped || epoch !== mempoolEpoch) return;
+      // Official API: MempoolTransactions(fromGroup, toGroup, transactions).
+      if (!Array.isArray(snapshot) || !snapshot.every(entry =>
+        [entry?.fromGroup, entry?.toGroup].every(g => Number.isInteger(g) && g >= 0 && g < 4)
+        && Array.isArray(entry.transactions) && entry.transactions.every(validStreamTransaction))) {
+        throw new Error('Invalid mempool response');
+      }
+      const ids = new Set();
+      for (const entry of snapshot) {
+        const route = { chainFrom: entry.fromGroup, chainTo: entry.toGroup };
+        for (const tx of entry.transactions) {
+          ids.add(tx.unsigned.txId);
+          // Blocks received while this request was in flight win over stale snapshots.
+          publishTransaction(tx, route);
+        }
+      }
+      // Disappearance from a node's mempool does not prove inclusion or execution.
+      mempoolCount = ids.size;
+      lastMempoolAt = Date.now(); mempoolFeed = 'active'; mempoolError = '';
+    } catch (error) {
+      if (stopped || epoch !== mempoolEpoch) return;
+      mempoolFeed = 'error';
+      mempoolError = controller.signal.aborted ? 'Mempool request timed out' : `Mempool: ${error.message}`;
+    } finally {
+      if (epoch === mempoolEpoch) {
+        clearTimeout(mempoolTimeout);
+        mempoolRequest = null;
+        reportHealth();
+      }
+    }
+  }
+  function startMempool() {
+    stopMempool();
+    mempoolFeed = 'pending';
+    // Subscribe first, then snapshot. Skip ticks while a previous request is pending.
+    void pollMempool();
+    mempoolTimer = setInterval(() => { void pollMempool(); }, 1000);
   }
   function detach() {
     clearTimeout(watchdog);
+    stopMempool();
     if (!socket) return;
     socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
     socket.close();
@@ -60,6 +140,7 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
       transport = 'connected';
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'subscribe', params: ['block'] }));
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'subscribe', params: ['tx'] }));
+      startMempool();
       armWatchdog(30000);
       reportHealth();
     };
@@ -83,14 +164,7 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
         const route = streamTransactionRoute(tx);
         txFeed = 'active'; lastTxAt = Date.now();
         reportHealth();
-        if (!route || seenTransactions.has(tx.unsigned.txId)) return;
-        seenTransactions.add(tx.unsigned.txId);
-        if (seenTransactions.size > 5000) for (const hash of [...seenTransactions].slice(0, 2500)) seenTransactions.delete(hash);
-        // A validated transaction can also establish that the feed is live.
-        attempt = 0;
-        clearTimeout(demoTimer); demoTimer = null;
-        setState('live');
-        onTransaction(tx, route);
+        publishTransaction(tx, route);
         return;
       }
       const block = message.method === 'block_notify' ? params
@@ -102,13 +176,15 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
       armWatchdog(30000);
       blockFeed = 'active'; lastBlockAt = Date.now();
       if (txFeed !== 'error') lastError = '';
-      attempt = 0;
-      clearTimeout(demoTimer); demoTimer = null;
-      setState('live');
-      if (seen.has(block.hash)) return;
+      if (seen.has(block.hash)) { establishLive(); reportHealth(); return; }
       seen.add(block.hash);
-      block.transactions.forEach(tx => seenTransactions.add(tx.unsigned.txId));
-      if (seenTransactions.size > 5000) for (const hash of [...seenTransactions].slice(0, 2500)) seenTransactions.delete(hash);
+      block.transactions.forEach(tx => {
+        pendingTransactions.delete(tx.unsigned.txId);
+        minedTransactions.add(tx.unsigned.txId);
+      });
+      // Bound the recent-inclusion cache; retain pending IDs until their block arrives.
+      if (minedTransactions.size > 20000) for (const hash of [...minedTransactions].slice(0, 10000)) minedTransactions.delete(hash);
+      establishLive();
       if (seen.size > 2000) for (const hash of [...seen].slice(0, 1500)) seen.delete(hash);
       samples.push({ at: Date.now(), transactions: Math.max(0, block.transactions.length - 1),
         failed: block.transactions.filter(tx => tx.scriptExecutionOk === false).length });
@@ -199,12 +275,26 @@ function renderNetworkHealth(health) {
   set('healthFailedTx', health.failedTransactions || 0);
   set('healthBlockFeed', health.blockFeed || 'disabled');
   set('healthTxFeed', health.txFeed || 'disabled');
+  const mempoolSize = document.getElementById('sMempool');
+  if (mempoolSize) {
+    mempoolSize.textContent = health.mode !== 'demo' && health.lastMempoolAt ? String(health.mempoolCount) : '–';
+    mempoolSize.title = health.lastMempoolAt
+      ? `Latest successful mempool snapshot · ${((Date.now() - health.lastMempoolAt) / 1000).toFixed(1)}s ago`
+      : 'Waiting for a successful mempool snapshot';
+  }
+  // Additional views may use only the original health fields.
+  const mempool = document.getElementById('healthMempoolFeed');
+  if (mempool) {
+    mempool.textContent = health.mempoolFeed || 'disabled';
+    set('healthMempoolCount', health.lastMempoolAt ? health.mempoolCount : '–');
+    set('healthLastMempool', health.lastMempoolAt ? ((Date.now() - health.lastMempoolAt) / 1000).toFixed(1) + 's ago' : '–');
+  }
   set('healthLastBlock', health.lastBlockAt ? ((Date.now() - health.lastBlockAt) / 1000).toFixed(1) + 's ago' : '–');
   set('healthReconnects', health.reconnects || 0);
   set('healthNote', health.mode === 'demo' ? 'Simulated traffic excluded from network metrics' : 'Observed in the last 60s · rewards excluded');
   const error = document.getElementById('healthError');
-  error.textContent = health.lastError || '';
-  error.hidden = !health.lastError;
+  error.textContent = [health.lastError, health.mempoolError].filter(Boolean).join(' · ');
+  error.hidden = !error.textContent;
 }
 
 function transactionStatusLabel(status) {
