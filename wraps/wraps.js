@@ -19,7 +19,7 @@ globalThis.WRAPS = [
     id: 'run-buy-it',
     type: 'art',
     panels: ['run-buy-it.png'],
-    credit: 'a community supporter',
+    credit: 'Baal',
     link: null,
     weight: 1,
     active: { from: '2026-10-07', to: null },
