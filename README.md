@@ -34,4 +34,4 @@ For interactive checks in an existing Chrome browser, serve the repo locally and
 
 About 1 in 5 trains is painted with a design from `wraps/`. Clicking a wrapped train credits the artist ("🎨 Art by …"), or "📢 Sponsored by …" for ads, with an optional https link on the card (never on the image itself). `special` wraps only run on milestone blocks.
 
-To add one: put a **104 × 60 px PNG** per car side in `wraps/` (2–6 panels for a design that spans the train) and add an entry to `wraps/wraps.js` (id, type `art`/`ad`/`special`, panels, credit, optional link, weight, active dates). Images live in the repo and every wrap is reviewed by hand before it goes live.
+To add one: start from `wraps/template.png` (104 × 60 px; the red box at x 42–61, y 8–55 is the door, which is hidden while it's open, so keep text and key details outside it), put a **104 × 60 px PNG** per car side in `wraps/` (2–6 panels for a design that spans the train) and add an entry to `wraps/wraps.js` (id, type `art`/`ad`/`special`, panels, credit, optional link, weight, active dates). Images live in the repo and every wrap is reviewed by hand before it goes live.

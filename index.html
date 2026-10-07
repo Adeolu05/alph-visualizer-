@@ -339,8 +339,7 @@ function drawTrain(tr, row, t) {
     const panel = tr.wrap && wrapImages[tr.wrap.panels[c % tr.wrap.panels.length]];
     if (panel?.complete && panel.naturalWidth) {
       // wrapped car: the artwork covers the whole side; only the door and wheels are drawn over it
-      ctx.imageSmoothingEnabled = false; ctx.drawImage(panel, x, y, w, ch - u);
-      ctx.fillStyle = '#2a2e48'; ctx.fillRect(x, y + ch - u, w, u);
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(panel, x, y, w, ch); // 104x60 panel maps 1:1 onto the car (4 px per unit)
       const open = tr.state === 'dwell' ? Math.min(1, tr.t / 250, (1300 - tr.t) / 250) : 0;
       ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1; ctx.strokeRect(x + w / 2 - 2.5 * u, y + 2 * u, 5 * u, ch - 3 * u);
       if (open > 0) { ctx.fillStyle = '#ffe89a'; ctx.fillRect(x + w / 2 - 2.5 * u * open, y + 2 * u, 5 * u * open, ch - 3 * u); }

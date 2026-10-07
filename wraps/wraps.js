@@ -3,6 +3,8 @@
 //
 // How to add one:
 //   1. Put the image in this folder. One panel = one car side, 104 x 60 px PNG (pixel art reads best).
+//      Start from template.png: the red box (x 42-61, y 8-55) is the door, which is covered while it's open.
+//      Keep names and key details outside it. Transparent background is fine; the car shows through.
 //      A design can span the whole train: list 2-6 panels and they're used car by car, repeating.
 //   2. Add an entry below. Every wrap is reviewed by hand before it goes live.
 //
