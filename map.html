@@ -124,7 +124,7 @@ function depart(b) {
 function renderBoard() {
   document.getElementById('rows').innerHTML = departures.map(d =>
     `<tr><td><span class="chip" style="background:${COLORS[d.f]}"></span>${d.f}→${d.to}<span class="chip" style="background:${COLORS[d.to]};margin-left:4px"></span></td>
-     <td>#${d.h}</td><td>${d.pax === 0 ? 'ghost' : d.pax + ' pax'}</td></tr>`).join('');
+     <td>#${d.h}</td><td>${d.pax === 0 ? '⛏ miner only' : '⛏+' + d.pax + ' pax'}</td></tr>`).join('');
 }
 
 // ---- data: live with demo fallback ----
@@ -236,14 +236,14 @@ function drawTrains(dt) {
     for (let c = cars - 1; c >= 0; c--) {
       const p = pathPoint(tr.f, tr.to, Math.max(0, e - c * 0.025));
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.ang);
-      ctx.globalAlpha = tr.ghost ? 0.35 + Math.sin(performance.now() / 120) * 0.15 : 1;
-      ctx.shadowColor = COLORS[tr.f]; ctx.shadowBlur = tr.ghost ? 4 : 14;
-      ctx.fillStyle = c === 0 ? '#fff' : COLORS[tr.f];
+      ctx.globalAlpha = 1;
+      ctx.shadowColor = COLORS[tr.f]; ctx.shadowBlur = 14;
+      ctx.fillStyle = c === 0 ? '#ffcc00' : COLORS[tr.f]; // lead car = the miner (coinbase tx), on every train
       ctx.fillRect(-6, -3.5, 11, 7); ctx.restore();
     }
     if (tr.ghost) {
       const p = pathPoint(tr.f, tr.to, e);
-      ctx.font = '14px serif'; ctx.textAlign = 'center'; ctx.fillText('👻', p.x, p.y - 12);
+      ctx.font = '14px serif'; ctx.textAlign = 'center'; ctx.fillText('⛏', p.x, p.y - 12);
     } else if (tr.pax >= 20) {
       const p = pathPoint(tr.f, tr.to, e);
       ctx.font = 'bold 10px ui-monospace,monospace'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
