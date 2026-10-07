@@ -21,10 +21,13 @@
   canvas { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:default; }
   header { position:fixed; top:14px; left:16px; right:16px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; pointer-events:none; }
   header > * { pointer-events:auto; }
-  h1 { margin:0 auto 0 0; font-size:20px; letter-spacing:.04em; text-shadow:0 0 12px #8f7bff; pointer-events:none; }
-  h1 small { display:block; font-size:12px; color:var(--dim); font-weight:normal; letter-spacing:0; text-shadow:none; }
+  h1 { margin:0 auto 0 0; font-size:20px; letter-spacing:.04em; text-shadow:0 0 12px #8f7bff; pointer-events:none;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:6px 12px; backdrop-filter:blur(4px); }
+  h1 small { display:block; font-size:12px; color:#c3c9e8; font-weight:normal; letter-spacing:0; text-shadow:none; }
   .badge { padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line);
     background:var(--panel); white-space:nowrap; color:var(--ink); text-decoration:none; font-family:inherit; cursor:pointer; }
+  #price { font-weight:bold; } #price .up { color:#5dffa8; } #price .down { color:#ff7a7a; }
+  #price.flash { box-shadow:0 0 14px #ffd25d; }
   .badge.live { color:#5dffa8; } .badge.demo { color:#ffd25d; } .badge.retry { color:#ff7a7a; }
   #find { width:190px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); background:var(--panel);
     color:var(--ink); font:inherit; font-size:12px; outline:none; }
@@ -46,6 +49,7 @@
     #board { left:16px; right:16px; width:auto; top:auto; bottom:92px; }
     #board tr:nth-child(n+4) { display:none; }
     h1 { font-size:16px; } #find { width:150px; }
+    .stat:last-child { display:none; } .stat { padding:3px 7px; }
   }
 </style>
 </head>
@@ -56,13 +60,14 @@
   <input id="find" placeholder="🔎 find tx or address" autocomplete="off" spellcheck="false">
   <button id="snd" class="badge" title="Station sounds">🔇</button>
   <a class="badge" href="map.html">🗺 map</a>
+  <a id="price" class="badge" href="https://www.coingecko.com/en/coins/alephium" target="_blank" rel="noopener" title="ALPH price (CoinGecko)">ALPH $…</a>
   <span id="mode" class="badge demo">● DEMO</span>
 </header>
 <div id="board"><h2><span>DEPARTURES</span><span id="clock"></span></h2><table id="rows"></table><div id="ticker">👆 Tap a passenger or train to open it in the explorer.</div></div>
 <div class="stats">
   <div class="stat"><b id="sBlocks">0</b><span>trains/min</span></div>
   <div class="stat"><b id="sTx">0</b><span>pax/min</span></div>
-  <div class="stat"><b id="sAlph">0</b><span>ALPH/min</span></div>
+  <div class="stat"><b id="sAlph">0</b><span id="sAlphLbl">ALPH/min</span></div>
   <div class="stat"><b id="sWait">0</b><span>waiting</span></div>
   <div class="stat"><b id="sLast">–</b><span>last train</span></div>
 </div>
@@ -78,6 +83,9 @@ const SKIN = ['#f1c7a5', '#d9a07a', '#a86b48', '#6e4630', '#f5d6b8'];
 const WHALE = 10000; // ALPH
 const rnd = n => Math.floor(Math.random() * n);
 const pick = a => a[rnd(a.length)];
+let alphUsd = 0; // live price, 0 until loaded
+const usd = n => !alphUsd ? '' : '$' + (n * alphUsd >= 1000 ? Math.round(n * alphUsd).toLocaleString('en') : (n * alphUsd).toFixed(2));
+const withUsd = n => alphUsd ? ` (≈ ${usd(n)})` : '';
 const fmt = n => n >= 1000 ? Math.round(n).toLocaleString('en') : n >= 10 ? n.toFixed(1) : n.toFixed(2);
 const short = h => h ? h.slice(0, 6) + '…' + h.slice(-4) : '';
 
@@ -138,7 +146,7 @@ function spawnPerson(f, to, tx = {}) {
     bag: Math.random() < 0.3, phase: Math.random() * 10, a: 1,
   };
   p.whale = p.alph >= WHALE;
-  if (p.whale) { p.hat = true; p.speed *= 0.7; announce(`🐋 A whale carrying ${fmt(p.alph)} ALPH has entered platform ${f}.`); }
+  if (p.whale) { p.hat = true; p.speed *= 0.7; announce(`🐋 A whale carrying ${fmt(p.alph)} ALPH${withUsd(p.alph)} has entered platform ${f}.`); }
   p.found = matches(p);
   if (p.found) { lastAnnounce = 0; announce(`🎯 Your passenger just walked onto platform ${f}! Look for the green arrow.`); }
   people.push(p);
@@ -177,7 +185,7 @@ function drawPerson(p, row, t) {
   if (p === hovered) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x - 3 * s, y - 12 * s, 6 * s, 12.5 * s); }
   if (p.whale && p.state === 'wait') {
     ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(3.2 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center';
-    ctx.fillText(`🐋 ${fmt(p.alph)}`, x, y - 15 * s);
+    ctx.fillText(`🐋 ${fmt(p.alph)}${alphUsd ? ' · ' + usd(p.alph) : ''}`, x, y - 15 * s);
   }
 }
 
@@ -393,7 +401,7 @@ function showTip(p, cx, cy) {
   tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[p.to]}">${p.whale ? '🐋 Whale' : p.contract ? '⚙️ Contract call' : 'Passenger'}</b><br>
     ${p.hash ? 'tx ' + short(p.hash) + '<br>' : '<i>Demo passenger. On live mainnet this links to the real transaction.</i><br>'}
     Platform ${p.f} → ${DEST[p.to]} (G${p.to})<br>
-    ${p.alph ? fmt(p.alph) + ' ALPH' : ''}${p.tokens ? ' + tokens' : ''}
+    ${p.alph ? fmt(p.alph) + ' ALPH' + withUsd(p.alph) : ''}${p.tokens ? ' + tokens' : ''}
     ${p.from ? '<br>from ' + short(p.from) : ''}${link}`;
   tip.style.display = 'block';
   tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
@@ -421,7 +429,7 @@ function trainAt(cx, cy) {
 }
 function showTrainTip(tr, cx, cy) {
   tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[tr.to]}">${tr.pax ? '🚆 Train' : '👻 Ghost train'} #${tr.h}</b><br>
-    Platform ${tr.f} → ${DEST[tr.to]} (G${tr.f}→G${tr.to})<br>${tr.pax} passenger${tr.pax === 1 ? '' : 's'}${tr.alph ? ' · ' + fmt(tr.alph) + ' ALPH' : ''}<br>
+    Platform ${tr.f} → ${DEST[tr.to]} (G${tr.f}→G${tr.to})<br>${tr.pax} passenger${tr.pax === 1 ? '' : 's'}${tr.alph ? ' · ' + fmt(tr.alph) + ' ALPH' + withUsd(tr.alph) : ''}<br>
     ${tr.hash ? `<a href="${EXPLORER}/blocks/${tr.hash}" target="_blank" rel="noopener">open block in explorer ↗</a>` : '<i>Demo train. On live mainnet this links to the block.</i>'}`;
   tip.style.display = 'block';
   tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
@@ -474,7 +482,7 @@ async function lookup(q, seq) {
         const n = netFor(tx, q);
         return `<br>${n >= 0 ? '🟢 +' : '🔴 '}${fmt(Math.abs(n))} ALPH · ${ago(tx.timestamp)} · <a href="${EXPLORER}/transactions/${tx.hash}" target="_blank" rel="noopener">${short(tx.hash)}</a>`;
       }).join('');
-      showPanel(`<b>Address ${short(q)}</b><br>Balance: <b>${fmt(atto(bal.balance))} ALPH</b>${atto(bal.lockedBalance) ? ` (${fmt(atto(bal.lockedBalance))} locked)` : ''}
+      showPanel(`<b>Address ${short(q)}</b><br>Balance: <b>${fmt(atto(bal.balance))} ALPH</b>${withUsd(atto(bal.balance))}${atto(bal.lockedBalance) ? ` (${fmt(atto(bal.lockedBalance))} locked)` : ''}
         <br><br><b>Recent trips</b>${list || '<br>No transactions yet.'}
         <br><br>👀 Watching the gates: next time this address sends or receives, its passenger gets a green arrow.
         <br><a href="${EXPLORER}/addresses/${q}" target="_blank" rel="noopener">open in explorer ↗</a>`);
@@ -594,6 +602,24 @@ function stopDemo() { clearInterval(demoTimer); demoTimer = null; }
 setMode('demo'); startDemo();
 if (!forceDemo) { pollBlocks(); setInterval(pollBlocks, 4000); setInterval(pollMempool, 3000); }
 
+// ---- live ALPH price (CoinGecko, free, browser-friendly). Polled once a minute to stay inside rate limits. ----
+const priceEl = document.getElementById('price');
+async function pollPrice() {
+  try {
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=alephium&vs_currencies=usd&include_24hr_change=true', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const { alephium: a } = await r.json();
+    const prev = alphUsd; alphUsd = a.usd;
+    const ch = a.usd_24h_change || 0, dp = a.usd < 1 ? 4 : 2;
+    priceEl.innerHTML = `ALPH $${a.usd.toFixed(dp)} <span class="${ch >= 0 ? 'up' : 'down'}">${ch >= 0 ? '▲' : '▼'}${Math.abs(ch).toFixed(1)}%</span>`;
+    if (prev && Math.abs(alphUsd - prev) / prev > 0.01) { // a 1%+ move in a minute gets a shout
+      priceEl.classList.add('flash'); setTimeout(() => priceEl.classList.remove('flash'), 3000);
+      lastAnnounce = 0; announce(`${alphUsd > prev ? '🚀 ALPH is climbing' : '📉 ALPH is dipping'}: now $${alphUsd.toFixed(dp)}.`);
+    }
+  } catch { if (!alphUsd) priceEl.textContent = 'ALPH $ –'; }
+}
+pollPrice(); setInterval(pollPrice, 60000);
+
 // ---- main loop ----
 let prev = performance.now();
 function frame(now) {
@@ -604,7 +630,7 @@ function frame(now) {
     if (Math.abs(dx) > 1) p.x += Math.sign(dx) * Math.min(Math.abs(dx), p.speed * dt * u);
     else if (p.state === 'walk') { p.state = 'wait'; p.speed = 0.035 + Math.random() * 0.03; }
     else if (p.state === 'board') {
-      if (p.a === 1 && p.alph >= 0.01) floatText(p.x, rows[p.f].floor - 14 * u, p.whale ? `🐋 ${fmt(p.alph)} ALPH` : `+${fmt(p.alph)} ℵ`, p.whale ? '#ffd25d' : COLORS[p.to]);
+      if (p.a === 1 && p.alph >= 0.01) floatText(p.x, rows[p.f].floor - 14 * u, p.whale ? `🐋 ${fmt(p.alph)} ALPH${alphUsd ? ' ≈ ' + usd(p.alph) : ''}` : `+${fmt(p.alph)} ℵ`, p.whale ? '#ffd25d' : COLORS[p.to]);
       p.a -= dt / 200; if (p.a <= 0) people.splice(i, 1);
     }
     if (p.state === 'wait' && Math.random() < 0.002) { p.tx = Math.max(10, Math.min(W * 0.8, p.x + (Math.random() - 0.5) * 40 * u)); p.state = 'walk'; }
@@ -637,7 +663,9 @@ setInterval(() => {
   while (history.length && history[0].at < cut) history.shift();
   document.getElementById('sBlocks').textContent = history.length;
   document.getElementById('sTx').textContent = history.reduce((s, h) => s + h.pax, 0);
-  document.getElementById('sAlph').textContent = fmt(history.reduce((s, h) => s + h.alph, 0));
+  const moved = history.reduce((s, h) => s + h.alph, 0);
+  document.getElementById('sAlph').textContent = alphUsd ? usd(moved) : fmt(moved);
+  document.getElementById('sAlphLbl').textContent = alphUsd ? (W < 700 ? 'moved/min' : `moved/min (${fmt(moved)} ALPH)`) : 'ALPH/min';
   document.getElementById('sWait').textContent = people.filter(p => p.state !== 'board').length;
   document.getElementById('sLast').textContent = lastBlockAt ? ((Date.now() - lastBlockAt) / 1000).toFixed(1) + 's' : '–';
   document.getElementById('clock').textContent = new Date().toTimeString().slice(0, 8);

@@ -6,6 +6,7 @@ Alephium, live, as a pixel-art train station. Open `index.html` (station) or `ma
 - Every block is a train; every transaction is a passenger who boards it
 - Live passengers are real transactions: they appear from the mempool, and the exact ones in a block board that train. Click one to see its tx and open it in the explorer
 - 🐋 Whales (≥10,000 ALPH sent), token carriers (green bag), contract callers (juggling gears), 👻 ghost trains for empty blocks, gold rush-hour trains for 25+ txs
+- Live ALPH price (CoinGecko, polled every 60s) with 24h change; dollar values on passengers, trains, whales, search results and the moved/min stat
 - Search box: paste a tx hash or address (≥4 chars) and your passenger gets a green arrow
 - Announcements ticker, optional chimes (🔇/🔊), pigeons, braking sparks, rain, shooting stars, sky follows your local time of day
 
