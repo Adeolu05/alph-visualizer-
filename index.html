@@ -169,13 +169,19 @@ function drawPerson(p, row, t) {
   ctx.fillStyle = '#20223a';
   ctx.fillRect(x - s, y - 3 * s, s, 3 * s + (step > 0 ? 0 : -s * 0.5));
   ctx.fillRect(x + s * 0.2, y - 3 * s, s, 3 * s + (step > 0 ? -s * 0.5 : 0));
-  ctx.fillStyle = p.whale ? '#e9b949' : COLORS[p.to];
+  ctx.fillStyle = p.miner ? '#ff8c1a' : p.whale ? '#e9b949' : COLORS[p.to];
   ctx.fillRect(x - 1.5 * s, y - 7 * s, 3 * s, 4 * s);
   if (p.whale) { ctx.fillStyle = COLORS[p.to]; ctx.fillRect(x - 0.4 * s, y - 7 * s, 0.8 * s, 3 * s); } // tie
   if (p.bag || p.tokens) { ctx.fillStyle = p.tokens ? '#5dffa8' : '#7a5230'; ctx.fillRect(x + 1.5 * s, y - 5 * s, 1.5 * s, 2 * s); }
   const bob = p.state === 'wait' ? Math.round(Math.sin(t / 700 + p.phase)) * s * 0.3 : 0;
   ctx.fillStyle = p.skin; ctx.fillRect(x - s, y - 9.5 * s + bob, 2 * s, 2.5 * s);
-  if (p.hat) { ctx.fillStyle = p.whale ? '#111' : '#222'; ctx.fillRect(x - 1.3 * s, y - 10.3 * s + bob, 2.6 * s, s); if (p.whale) ctx.fillRect(x - 0.9 * s, y - 12 * s + bob, 1.8 * s, 1.8 * s); }
+  if (p.miner) {
+    ctx.fillStyle = '#ffe14d'; ctx.fillRect(x - 1.2 * s, y - 6 * s, 2.4 * s, 0.6 * s);                 // vest stripe
+    ctx.fillStyle = '#ffcc00'; ctx.fillRect(x - 1.4 * s, y - 10.6 * s + bob, 2.8 * s, 1.3 * s);     // hard hat
+    ctx.fillStyle = '#fffbe0'; ctx.fillRect(x + 1 * s, y - 10.3 * s + bob, 0.7 * s, 0.7 * s);        // head-lamp
+    ctx.fillStyle = '#8a5a2b'; ctx.fillRect(x - 2.6 * s, y - 9 * s, 0.6 * s, 5 * s);                 // pickaxe handle
+    ctx.fillStyle = '#b8bfd6'; ctx.fillRect(x - 3.8 * s, y - 9.4 * s, 3 * s, 0.7 * s);               // pickaxe head
+  } else if (p.hat) { ctx.fillStyle = p.whale ? '#111' : '#222'; ctx.fillRect(x - 1.3 * s, y - 10.3 * s + bob, 2.6 * s, s); if (p.whale) ctx.fillRect(x - 0.9 * s, y - 12 * s + bob, 1.8 * s, 1.8 * s); }
   if (p.state === 'wait' && p.phase > 7 && !p.whale) { ctx.fillStyle = '#9fe3ff'; ctx.fillRect(x + s, y - 7 * s, s * 0.8, s * 1.2); }
   if (p.contract && p.state === 'wait') { // contract callers juggle little gears
     ctx.fillStyle = '#ffd25d';
@@ -226,7 +232,12 @@ function stepTrains(dt) {
       pl.train = pl.queue.shift();
       const tr = pl.train;
       pigeons[f].forEach(b => { if (!b.fly) b.fly = 0.01; });
-      if (tr.pax === 0 && Math.random() < 0.3) announce(`⛏ Platform ${f}: miner-only express to ${DEST[tr.to]}, carrying just the block reward.`);
+      // Every block has a coinbase (mining reward) tx: its miner jogs in from the mine shaft to catch the train.
+      people.push({
+        f, to: tr.to, miner: tr, hash: tr.miner?.hash, alph: tr.miner?.alph || 0, from: '', dests: [],
+        x: -12, tx: W * 0.08 + CAR() * 0.5 + rnd(CAR()), state: 'walk', speed: 0.14, skin: pick(SKIN), phase: Math.random() * 10, a: 1,
+      });
+      if (tr.pax === 0 && Math.random() < 0.3) announce(`⛏ Platform ${f}: just the miner on this one, riding to ${DEST[tr.to]} with the block reward.`);
       else if (tr.pax >= 25) announce(`🚨 Rush hour! ${tr.pax} passengers boarding at platform ${f}.`);
       else if (Math.random() < 0.25) announce(`Now arriving at platform ${f}: block #${tr.h} to ${DEST[tr.to]}.`);
       chime(f);
@@ -256,6 +267,8 @@ function board(tr) {
   // Live: the exact passengers whose tx is in this block. Otherwise anyone heading the same way.
   let riders = here.filter(p => p.hash && tr.riders.includes(p.hash));
   if (riders.length < tr.pax) riders = riders.concat(here.filter(p => !riders.includes(p) && !p.hash && p.to === tr.to).slice(0, tr.pax - riders.length));
+  const miner = people.find(p => p.miner === tr && p.state !== 'board');
+  if (miner) { miner.hash = tr.miner?.hash; miner.alph = tr.miner?.alph || miner.alph; riders.unshift(miner); }
   riders.forEach(p => {
     p.state = 'board'; p.speed = 0.09;
     p.tx = ds.reduce((best, d) => Math.abs(d - p.x) < Math.abs(best - p.x) ? d : best, ds[0]);
@@ -263,7 +276,7 @@ function board(tr) {
   });
 }
 function drawTrain(tr, row, t) {
-  const minerOnly = tr.pax === 0, rush = tr.pax >= 25;
+  const rush = tr.pax >= 25;
   const ch = 15 * u, col = COLORS[tr.to];
   const sway = tr.state === 'dwell' ? 0 : Math.round(Math.sin(t / 40) * 0.4 * u);
   const y = row.track - ch - u + sway;
@@ -273,12 +286,12 @@ function drawTrain(tr, row, t) {
     ctx.fillStyle = body; ctx.fillRect(x, y, w, ch);
     ctx.fillStyle = col; ctx.fillRect(x, y + ch * 0.62, w, 2 * u);
     ctx.fillStyle = '#2a2e48'; ctx.fillRect(x, y + ch - u, w, u);
-    const filled = Math.ceil(tr.pax / tr.cars);
+    const filled = Math.ceil((tr.pax + 1) / tr.cars); // +1: the miner
     for (let wi = 0; wi < 4; wi++) {
       const wx = x + 2 * u + wi * 6 * u;
       ctx.fillStyle = '#fff3c4';
       ctx.fillRect(wx, y + 2.5 * u, 4.5 * u, 4.5 * u);
-      if (wi < filled && !(c === 0 && wi === 0)) { ctx.fillStyle = '#3a3150'; ctx.fillRect(wx + 1.5 * u, y + 4 * u, 1.6 * u, 3 * u); }
+      if (wi < filled && !(c === 0 && wi === 0) && tr.state !== 'in') { ctx.fillStyle = '#3a3150'; ctx.fillRect(wx + 1.5 * u, y + 4 * u, 1.6 * u, 3 * u); }
     }
     const open = tr.state === 'dwell' ? Math.min(1, tr.t / 250, (1300 - tr.t) / 250) : 0;
     ctx.fillStyle = '#4b5070'; ctx.fillRect(x + w / 2 - 2.5 * u, y + 2 * u, 5 * u, ch - 3 * u);
@@ -286,8 +299,8 @@ function drawTrain(tr, row, t) {
     ctx.fillStyle = '#111';
     ctx.fillRect(x + 3 * u, row.track - u, 3 * u, 1.5 * u); ctx.fillRect(x + w - 6 * u, row.track - u, 3 * u, 1.5 * u);
   }
-  // the miner (coinbase tx) rides up front in every train: hard hat + head-lamp in the first window
-  {
+  // once boarded, the miner (coinbase tx) rides up front: hard hat + head-lamp in the first window
+  if (tr.state !== 'in') {
     const mx = Math.round(tr.x) + 2 * u, my = y + 2.5 * u;
     ctx.fillStyle = '#d9a07a'; ctx.fillRect(mx + 1.3 * u, my + 2 * u, 2 * u, 2 * u);              // face
     ctx.fillStyle = '#ffcc00'; ctx.fillRect(mx + 0.8 * u, my + 0.9 * u, 3 * u, 1.3 * u);           // hard hat
@@ -305,7 +318,7 @@ function drawTrain(tr, row, t) {
   if (tr.state !== 'dwell') { ctx.fillStyle = 'rgba(255,248,192,.12)'; ctx.beginPath(); ctx.moveTo(nx - 5 * u, y + ch * 0.65); ctx.lineTo(nx - 60 * u, y); ctx.lineTo(nx - 60 * u, row.track); ctx.fill(); }
   ctx.fillStyle = '#111'; ctx.fillRect(nx + 2 * u, y - 5 * u, 24 * u, 4.5 * u);
   ctx.fillStyle = col; ctx.font = `bold ${Math.round(3.4 * u)}px ui-monospace,monospace`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText(minerOnly ? `⛏ #${tr.h} MINER ONLY` : `#${tr.h} → ${DEST[tr.to]}`, nx + 3 * u, y - 2.7 * u);
+  ctx.fillText(`#${tr.h} → ${DEST[tr.to]}`, nx + 3 * u, y - 2.7 * u);
   ctx.globalAlpha = 1;
   if (tr.state === 'dwell' && (rush || tr.alph >= 1)) {
     ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(3.6 * u)}px ui-monospace,monospace`;
@@ -406,7 +419,7 @@ function chime(f) {
 const tip = document.getElementById('tip');
 function showTip(p, cx, cy) {
   const link = p.hash ? `<br><a href="${EXPLORER}/transactions/${p.hash}" target="_blank" rel="noopener">open in explorer ↗</a>` : '';
-  tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[p.to]}">${p.whale ? '🐋 Whale' : p.contract ? '⚙️ Contract call' : 'Passenger'}</b><br>
+  tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[p.to]}">${p.miner ? '⛏ Miner (block reward)' : p.whale ? '🐋 Whale' : p.contract ? '⚙️ Contract call' : 'Passenger'}</b><br>
     ${p.hash ? 'tx ' + short(p.hash) + '<br>' : '<i>Demo passenger. On live mainnet this links to the real transaction.</i><br>'}
     Platform ${p.f} → ${DEST[p.to]} (G${p.to})<br>
     ${p.alph ? fmt(p.alph) + ' ALPH' + withUsd(p.alph) : ''}${p.tokens ? ' + tokens' : ''}
@@ -440,7 +453,7 @@ function showTrainTip(tr, cx, cy) {
   const minerLine = m ? `⛏ Miner reward: ${fmt(m.alph)} ALPH${withUsd(m.alph)}${m.hash ? ` · <a href="${EXPLORER}/transactions/${m.hash}" target="_blank" rel="noopener">tx ↗</a>` : ''}`
     : tr.hash ? '⛏ Miner reward: loading…' : '⛏ 1 miner (block reward)';
   tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[tr.to]}">${tr.pax ? '🚆 Train' : '⛏ Miner-only express'} #${tr.h}</b><br>
-    Platform ${tr.f} → ${DEST[tr.to]} (G${tr.f}→G${tr.to})<br>${minerLine}<br>${tr.pax} passenger${tr.pax === 1 ? '' : 's'}${tr.alph ? ' · ' + fmt(tr.alph) + ' ALPH' + withUsd(tr.alph) : ''}<br>
+    Platform ${tr.f} → ${DEST[tr.to]} (G${tr.f}→G${tr.to})<br>${minerLine}<br>${tr.pax + 1} aboard: ⛏ 1 miner + ${tr.pax} passenger${tr.pax === 1 ? '' : 's'}${tr.alph ? ' · ' + fmt(tr.alph) + ' ALPH' + withUsd(tr.alph) : ''}<br>
     ${tr.hash ? `<a href="${EXPLORER}/blocks/${tr.hash}" target="_blank" rel="noopener">open block in explorer ↗</a>` : '<i>Demo train. On live mainnet this links to the block.</i>'}`;
   tip.style.display = 'block';
   tip.style.left = Math.min(cx + 12, W - 270) + 'px'; tip.style.top = Math.max(10, cy - 90) + 'px';
@@ -527,7 +540,7 @@ findEl.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(
 // ---- data: live mainnet, with demo fallback ----
 function renderBoard() {
   document.getElementById('rows').innerHTML = departures.map(d =>
-    `<tr><td style="color:${COLORS[d.f]}">P${d.f}</td><td>→ ${DEST[d.to]}</td><td>${d.hash ? `<a href="${EXPLORER}/blocks/${d.hash}" target="_blank" rel="noopener" style="color:inherit">#${d.h} ↗</a>` : '#' + d.h}</td><td>${d.pax ? '⛏+' + d.pax + ' pax' : '⛏ miner only'}</td></tr>`).join('');
+    `<tr><td style="color:${COLORS[d.f]}">P${d.f}</td><td>→ ${DEST[d.to]}</td><td>${d.hash ? `<a href="${EXPLORER}/blocks/${d.hash}" target="_blank" rel="noopener" style="color:inherit">#${d.h} ↗</a>` : '#' + d.h}</td><td>${d.pax + 1} pax</td></tr>`).join('');
 }
 const modeEl = document.getElementById('mode');
 function setMode(m) {
