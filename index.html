@@ -426,6 +426,43 @@ function drawTrain(tr, row, t) {
 
 // ---- scenery ----
 let weather = { rain: 0, until: 0 }, shooting = null;
+// ---- ecosystem murals: app logos painted on their own skyline buildings; click to open the app ----
+// Desktop spots sit in the sky gaps: between the network panel and the turbines, and between the neon sign and the
+// departures board. On phones the header covers most of the sky, so they line up small in the top-right corner.
+const MURALS = [
+  { name: 'Elexium', url: 'https://elexium.finance/', img: 'murals/elexium.png', x: 0.205, color: '#e9dcc0' },
+  { name: 'Linx', url: 'https://linxlabs.org/', img: 'murals/linx.png', x: 0.645, color: '#b07cff' },
+  { name: 'Aura', url: 'https://aura.markets/', img: 'murals/aura.png', x: 0.725, color: '#8f6bff' },
+];
+if (typeof Image !== 'undefined') MURALS.forEach(m => { m.image = new Image(); m.image.src = m.img; });
+function muralRects() {
+  const mobile = W < 700, top = rows[0].y0, s = mobile ? 26 : Math.round(Math.max(30, Math.min(52, top * 0.2)));
+  return MURALS.map((m, i) => {
+    const bw = s + 18, bh = Math.round(Math.min(top * 0.62, s * 2.6));
+    const bx = mobile ? W - 8 - (MURALS.length - i) * (bw + 4) : Math.round(W * m.x), by = top - bh;
+    return { m, bx, by, bw, bh, lx: bx + 9, ly: top - s - 10, s };
+  });
+}
+function drawMurals(t, pal) {
+  muralRects().forEach(({ m, bx, by, bw, bh, lx, ly, s }) => {
+    ctx.fillStyle = pal.day === 1 ? '#34426a' : '#10132a'; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = pal.day === 1 ? '#2b3760' : '#0a0c1c'; ctx.fillRect(bx, by, bw, 3);               // roof ledge
+    const lit = m === hoveredMural, glow = (lit ? 22 : 12) + Math.sin(t / 700 + bx) * 3;
+    ctx.save(); ctx.shadowColor = m.color; ctx.shadowBlur = glow;
+    ctx.fillStyle = m.color; ctx.fillRect(lx - 2, ly - 2, s + 4, s + 4);                               // neon frame
+    ctx.restore();
+    if (m.image?.complete && m.image.naturalWidth) ctx.drawImage(m.image, lx, ly, s, s);
+    ctx.font = `bold ${Math.max(8, Math.round(s * 0.24))}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.save(); ctx.shadowColor = m.color; ctx.shadowBlur = 8; ctx.fillStyle = '#fff';
+    ctx.fillText(m.name.toUpperCase() + (lit ? ' ↗' : ''), bx + bw / 2, ly - 5); ctx.restore();
+  });
+}
+let hoveredMural = null;
+function muralAt(cx, cy) {
+  const hit = muralRects().find(r => cx >= r.bx && cx <= r.bx + r.bw && cy >= r.ly - r.s * 0.4 && cy <= r.ly + r.s + 4);
+  return hit ? hit.m : null;
+}
+
 function drawSky(t) {
   const top = rows[0].y0, pal = skyPalette();
   const g = ctx.createLinearGradient(0, 0, 0, top);
@@ -448,6 +485,7 @@ function drawSky(t) {
     if (pal.day < 1) b.wins.forEach(([wx, wy, s]) => { ctx.fillStyle = s > 0.85 ? '#a08bff' : '#ffd98a'; ctx.globalAlpha = 0.5 + 0.3 * s; ctx.fillRect(b.x + wx, by + wy, 4, 5); });
     ctx.globalAlpha = 1;
   });
+  drawMurals(t, pal);
   [0.3, 0.36].forEach((k, i) => { // Proof-of-Less-Work wind turbines
     const x = W * k, y = top - 70, a = t / (700 + i * 200);
     ctx.strokeStyle = '#5dffa8'; ctx.lineWidth = 2;
@@ -568,11 +606,15 @@ cv.addEventListener('click', e => {
   if (p) return showTip(p, e.clientX, e.clientY);
   const tr = trainAt(e.clientX, e.clientY);
   if (tr) return showTrainTip(tr, e.clientX, e.clientY);
+  const m = muralAt(e.clientX, e.clientY);
+  if (m) { window.open(m.url, '_blank', 'noopener'); return; }
   tip.style.display = 'none';
 });
 cv.addEventListener('mousemove', e => {
   hovered = personAt(e.clientX, e.clientY);
-  cv.style.cursor = hovered || trainAt(e.clientX, e.clientY) ? 'pointer' : 'default';
+  hoveredMural = hovered ? null : muralAt(e.clientX, e.clientY);
+  cv.title = hoveredMural ? `Open ${hoveredMural.name} ↗` : '';
+  cv.style.cursor = hovered || hoveredMural || trainAt(e.clientX, e.clientY) ? 'pointer' : 'default';
 });
 // Search: highlight matching passengers now, look the address/tx up on the explorer, and keep
 // watching so the next matching passenger gets the green arrow as they walk in.
