@@ -7,8 +7,7 @@
   if (!icon || !ctx) return;
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const frames = Array.from({ length: 12 }, (_, frame) => {
-    ctx.fillStyle = '#07080f';
-    ctx.fillRect(0, 0, 32, 32);
+    ctx.clearRect(0, 0, 32, 32);
     ctx.strokeStyle = '#5dffa8';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
