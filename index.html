@@ -65,6 +65,15 @@
   #donate p { margin:6px 0 8px; color:#c3c9e8; } #donate code { display:block; word-break:break-all; background:#0b0c12;
     border:1px solid var(--line); border-radius:6px; padding:8px; color:#5dffa8; font-size:12px; }
   #donate .row { display:flex; gap:8px; margin-top:8px; } #donate .x { float:right; cursor:pointer; color:var(--dim); }
+  #appsBtn { display:none; }
+  #apps { position:fixed; z-index:6; top:64px; left:16px; right:16px; background:var(--panel); border:1px solid #a08bff;
+    border-radius:10px; padding:12px 14px; font-size:13px; box-shadow:0 6px 24px rgba(0,0,0,.5); }
+  #apps .x { float:right; cursor:pointer; color:var(--dim); }
+  #appsList a { display:flex; align-items:center; gap:12px; margin-top:10px; color:var(--ink); text-decoration:none;
+    padding:6px; border-radius:8px; border:1px solid var(--line); }
+  #appsList img { width:36px; height:36px; border-radius:6px; }
+  #appsList small { display:block; color:var(--dim); font-size:11px; }
+  @media (max-width:700px) { #appsBtn { display:inline-block; } }
   #tip a { color:#5dd6ff; } #tip .x { float:right; cursor:pointer; color:var(--dim); margin-left:8px; }
   .network-health { position:fixed; left:16px; z-index:3; width:265px; max-width:calc(100% - 32px); background:var(--panel); border:1px solid var(--line); border-radius:8px; font-size:11px; }
   .network-health summary { cursor:pointer; padding:7px 10px; color:#c3c9e8; }
@@ -90,6 +99,7 @@
   <button id="snd" class="badge" title="Station sounds">🔇</button>
   <a class="badge" href="map.html">🗺 map</a>
   <button id="donateBtn" class="badge" title="Support the station">💜 Donate</button>
+  <button id="appsBtn" class="badge" title="Alephium apps">🏙 Apps</button>
   <details class="color-legend">
     <summary class="badge">Color legend</summary>
     <div class="legend-body">
@@ -133,6 +143,7 @@
   <div class="stat"><b id="sLast">–</b><span>last train</span></div>
 </div>
 <div id="tip"></div>
+<div id="apps" hidden><span class="x" id="appsClose">✕</span><b>🏙 Alephium apps</b><div id="appsList"></div></div>
 <div id="donate" hidden>
   <span class="x" id="donateClose">✕</span>
   <b>💜 Keep the station running</b>
@@ -454,34 +465,36 @@ let weather = { rain: 0, until: 0 }, shooting = null;
 }
 
 // ---- ecosystem murals: app logos painted on their own skyline buildings; click to open the app ----
-// Desktop: the first mural sits between the network panel and the turbines; the rest line up right of the neon sign,
-// stopping before the departures board if it hangs down over the sky. Sizes shrink to fit narrower screens.
+// Desktop: murals fill the gap between the network panel and the turbines first, then line up right of the neon
+// sign, stopping before the departures board if it hangs down over the sky. Sizes shrink to fit narrower screens.
 // On phones the header covers most of the sky, so they line up small in the top-right corner.
 const MURALS = [
   { name: 'Elexium', url: 'https://elexium.finance/', img: 'murals/elexium.png', x: 0.205, color: '#e9dcc0' },
   { name: 'Powfi', url: 'https://powfi.alephium.org/', img: 'murals/powfi.png', x: 0, color: '#ff6a3d' },
   { name: 'Linx', url: 'https://linxlabs.org/', img: 'murals/linx.png', x: 0.645, color: '#b07cff' },
   { name: 'Aura', url: 'https://aura.markets/', img: 'murals/aura.png', x: 0.725, color: '#8f6bff' },
+  { name: 'AlphScoundrel', label: 'SCOUNDREL', url: 'https://alphscoundrel.alephium.org/', img: 'murals/alphscoundrel.png', x: 0, color: '#e8443a' },
 ];
 if (typeof Image !== 'undefined') MURALS.forEach(m => { m.image = new Image(); m.image.src = m.img; });
 function muralRects() {
-  const mobile = W < 700, top = rows[0].y0, gap = mobile ? 4 : 8;
-  let s = mobile ? 26 : Math.round(Math.max(30, Math.min(52, top * 0.2)));
-  const place = (m, bx, s) => {
-    const bw = s + 18, bh = Math.round(Math.min(top * 0.62, s * 2.6));
-    return { m, bx: Math.round(bx), by: top - bh, bw, bh, lx: Math.round(bx) + 9, ly: top - s - 10, s };
-  };
-  if (mobile) return MURALS.map((m, i) => place(m, W - 8 - (MURALS.length - i) * (s + 18 + gap), s));
-  // right group: from just past the neon sign to the board (only if the board reaches down into the mural band)
-  const fs = Math.max(16, Math.min(34, W * 0.03)), signRight = W / 2 + fs * 5.6 + 12;
-  const board = document.getElementById('board')?.getBoundingClientRect();
-  const bandTop = top - s * 1.5;
-  const limit = board && board.bottom > bandTop && board.left > signRight ? board.left - 10 : W - 12;
-  const right = MURALS.slice(1), room = limit - signRight;
-  s = Math.max(22, Math.min(s, Math.floor(room / right.length) - 18 - gap));
+  if (W < 700) return [];   // phones: the header covers the sky, so the apps live in the 🏙 Apps panel instead
+  const top = rows[0].y0, gap = 8, n = MURALS.length;
+  const fs = Math.max(16, Math.min(34, W * 0.03)), signTop = top - fs * 1.5;
   const net = document.getElementById('networkHealth')?.getBoundingClientRect();
-  const leftX = Math.max(W * 0.205, net && net.width ? net.right + 14 : 0);
-  return [place(MURALS[0], leftX, s), ...right.map((m, i) => place(m, signRight + i * (s + 18 + gap), s))];
+  const board = document.getElementById('board')?.getBoundingClientRect();
+  // a row of tall buildings standing behind the neon sign, logos above it
+  let s = Math.round(Math.max(30, Math.min(52, top * 0.2)));
+  const rowLeft = Math.max(W * 0.36 + 24, net && net.width ? net.right + 14 : 0);   // clear of the turbines and panel
+  const band = signTop - 12 - s * 1.5;
+  const rowRight = board && board.width && board.bottom > band ? board.left - 10 : W - 12;
+  s = Math.max(22, Math.min(s, Math.floor((rowRight - rowLeft + gap) / n) - 18 - gap));
+  const step = s + 18 + gap, total = n * step - gap;
+  const x0 = Math.max(rowLeft, Math.min(W / 2 - total / 2, rowRight - total));
+  const ly = Math.round(signTop - 12 - s);
+  return MURALS.map((m, i) => {
+    const bx = Math.round(x0 + i * step), bw = s + 18, by = ly - Math.round(s * 0.55) - 8;
+    return { m, bx, by, bw, bh: top - by, lx: bx + 9, ly, s };
+  });
 }
 function drawMurals(t, pal) {
   muralRects().forEach(({ m, bx, by, bw, bh, lx, ly, s }) => {
@@ -494,10 +507,22 @@ function drawMurals(t, pal) {
     if (m.image?.complete && m.image.naturalWidth) ctx.drawImage(m.image, lx, ly, s, s);
     ctx.font = `bold ${Math.max(8, Math.round(s * 0.24))}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.save(); ctx.shadowColor = m.color; ctx.shadowBlur = 8; ctx.fillStyle = '#fff';
-    ctx.fillText(m.name.toUpperCase() + (lit ? ' ↗' : ''), bx + bw / 2, ly - 5); ctx.restore();
+    ctx.fillText((m.label || m.name.toUpperCase()) + (lit ? ' ↗' : ''), bx + bw / 2, ly - 5); ctx.restore();
   });
 }
 let hoveredMural = null;
+{ // phone apps panel
+  const list = document.getElementById('appsList'), panel = document.getElementById('apps');
+  if (list && list.appendChild) {
+    MURALS.forEach(m => {
+      const a = document.createElement('a'); a.href = m.url; a.target = '_blank'; a.rel = 'noopener';
+      a.innerHTML = `<img src="${m.img}" alt=""><span><b>${m.name}</b><small>${m.url.replace(/^https:\/\/|\/$/g, '')}</small></span><span style="margin-left:auto">↗</span>`;
+      list.appendChild(a);
+    });
+    document.getElementById('appsBtn').onclick = () => { panel.hidden = !panel.hidden; };
+    document.getElementById('appsClose').onclick = () => { panel.hidden = true; };
+  }
+}
 function muralAt(cx, cy) {
   const hit = muralRects().find(r => cx >= r.bx && cx <= r.bx + r.bw && cy >= r.ly - r.s * 0.4 && cy <= r.ly + r.s + 4);
   return hit ? hit.m : null;

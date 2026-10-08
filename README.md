@@ -43,7 +43,7 @@ To add one: start from `wraps/template.png` (104 × 60 px; the red box at x 42�
 
 ## Ecosystem murals
 
-Elexium, Powfi, Linx and Aura are painted on their own buildings in the skyline (`murals/`, list in `MURALS` in `index.html`). Clicking a mural opens the app in a new tab.
+Elexium, Powfi, Linx, Aura and AlphScoundrel are painted on a row of buildings behind the neon sign (`murals/`, list in `MURALS` in `index.html`). Clicking a mural opens the app in a new tab. On phones they are listed under the 🏙 Apps button instead.
 
 ## Support
 
