@@ -39,7 +39,7 @@ for (const file of ['index.html', 'map.html']) for (const width of [1440, 390]) 
     try {
       const page = await context.newPage(), observed = monitor(page);
       await page.route('https://api.coingecko.com/**', route => route.abort());
-      await page.route('https://backend.mainnet.alephium.org/transactions/*', route => route.fulfill({ json: { hash: userTx.unsigned.txId, type: 'PendingTransaction' } }));
+      await page.route('https://backend.mainnet.alephium.org/transactions/*', route => route.fulfill({ json: { hash: userTx.unsigned.txId, type: 'Pending' } }));
       await page.clock.install();
       let mempool = [userTx], mempoolRequests = 0;
       await page.route('https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions', route => {
@@ -143,7 +143,8 @@ for (const file of ['index.html', 'map.html', 'yard.html']) {
       }));
       await page.route('https://backend.mainnet.alephium.org/transactions/*', route => {
         assert.ok(route.request().url().endsWith(userTx.unsigned.txId)); checks++;
-        return route.fulfill({ json: { type: 'AcceptedTransaction', hash: userTx.unsigned.txId,
+        if (mempool.length) return route.fulfill({ json: { type: 'Pending', hash: userTx.unsigned.txId } });
+        return route.fulfill({ json: { type: 'Accepted', hash: userTx.unsigned.txId,
           blockHash: 'd'.repeat(64), scriptExecutionOk: false } });
       });
       const connections = [];
@@ -168,3 +169,28 @@ for (const file of ['index.html', 'map.html', 'yard.html']) {
     } finally { await context.close(); }
   });
 }
+
+test('station minute sweep clears a visible animation orphan using the reported transaction response', async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  try {
+    const page = await context.newPage(), observed = monitor(page);
+    const mined = JSON.parse(await fs.readFile(path.join(__dirname, 'fixtures/mined-transaction.json'), 'utf8'));
+    await page.clock.install();
+    await page.route('https://api.coingecko.com/**', route => route.abort());
+    await page.route('https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions', route => route.fulfill({ json: [] }));
+    let checks = 0, socket;
+    await page.route(`https://backend.mainnet.alephium.org/transactions/${mined.hash}`, route => { checks++; return route.fulfill({ json: mined }); });
+    await page.routeWebSocket('**/events', ws => {
+      socket = ws; ws.onMessage(data => { const message = JSON.parse(data);
+        ws.send(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: message.params[0] }));
+        if (message.id === 2) ws.send(JSON.stringify(block()));
+      });
+    });
+    await page.goto(`${base}/index.html`); await page.clock.runFor(5000);
+    await page.evaluate(tx => spawnPerson(1, 2, { hash: tx.hash, status: 'succeeded' }), mined);
+    for (let height = 2; height <= 4; height++) { socket.send(JSON.stringify(block(height))); await page.clock.fastForward(20000); }
+    await page.waitForFunction(hash => !people.some(p => p.hash === hash), mined.hash);
+    assert.equal(checks, 1);
+    assert.deepEqual(observed.errors, []);
+  } finally { await context.close(); }
+});

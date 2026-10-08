@@ -1,10 +1,11 @@
 // Shared by both views; classic scripts also work when opened directly from disk.
-function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, onConfirmed = () => {}, onCheck = () => {} }) {
+function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, onConfirmed = () => {}, onCheck = () => {}, getWaitingTransactions = () => [] }) {
   const url = 'wss://ws.fullnode.alephium.notrustverify.ch/events';
   const mempoolUrl = 'https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions';
   const seen = new Set();
   const pendingTransactions = new Map();
   const minedTransactions = new Set();
+  const confirmationCandidates = new Map();
   let socket, retryTimer, watchdog, demoTimer, attempt = 0, stopped = false, state;
   let healthTimer, transport = 'connecting', blockFeed = 'pending', txFeed = 'pending', reconnects = 0;
   let lastBlockAt = 0, lastTxAt = 0, lastError = '';
@@ -12,54 +13,65 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, o
   let mempoolFeed = 'pending', lastMempoolAt = 0, mempoolCount = 0, mempoolError = '';
   const samples = [];
   let confirmationRequest, confirmationTimeout, nextConfirmationAt = 0;
-  let confirmationError = '', recoveredTransactions = 0;
+  let confirmationError = '', recoveredTransactions = 0, confirmationEpoch = 0;
+  let nextSweepAt = Date.now() + 60000;
 
   function rememberMined(id) {
     pendingTransactions.delete(id);
+    confirmationCandidates.delete(id);
     minedTransactions.add(id);
     if (minedTransactions.size > 20000) {
       for (const hash of [...minedTransactions].slice(0, 10000)) minedTransactions.delete(hash);
     }
   }
   function stopConfirmation() {
+    confirmationEpoch++;
     clearTimeout(confirmationTimeout);
     confirmationRequest?.abort();
     confirmationRequest = null;
   }
   async function checkTransaction(id) {
-    const record = pendingTransactions.get(id), now = Date.now();
-    if (!record || stopped || transport !== 'connected' || confirmationRequest || now < nextConfirmationAt) return;
+    const record = confirmationCandidates.get(id), now = Date.now();
+    if (!record || stopped || confirmationRequest || now < nextConfirmationAt) return;
     const controller = new AbortController();
     confirmationRequest = controller;
-    const epoch = mempoolEpoch;
-    record.nextCheckAt = now + 30000;
+    const epoch = confirmationEpoch;
+    record.nextCheckAt = now + 15000;
     nextConfirmationAt = now + 1000;
     confirmationTimeout = setTimeout(() => controller.abort(), 8000);
     try {
       const response = await fetch(`https://backend.mainnet.alephium.org/transactions/${id}`, {
         cache: 'no-store', signal: controller.signal,
       });
+      if (response.status === 404) {
+        if (stopped || epoch !== confirmationEpoch || confirmationCandidates.get(id) !== record) return;
+        confirmationError = '';
+        onCheck(id, 'Not indexed by the explorer yet');
+        return;
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const tx = await response.json();
-      if (stopped || epoch !== mempoolEpoch || pendingTransactions.get(id) !== record) return;
+      if (stopped || epoch !== confirmationEpoch || confirmationCandidates.get(id) !== record) return;
       if (!tx || tx.hash !== id || (tx.scriptExecutionOk !== undefined && typeof tx.scriptExecutionOk !== 'boolean')) {
         throw new Error('Invalid transaction response');
       }
       confirmationError = '';
       // Pending, missing, and unknown results never prove inclusion.
-      if (tx.type === 'PendingTransaction' || !tx.blockHash) {
+      if (tx.type === 'Pending' || tx.type === 'PendingTransaction') {
         onCheck(id, 'Not confirmed by the explorer yet');
         return;
       }
-      if (!/^[0-9a-f]{64}$/i.test(tx.blockHash)) throw new Error('Invalid block hash');
+      if (!['Accepted', 'AcceptedTransaction'].includes(tx.type) || !/^[0-9a-f]{64}$/i.test(tx.blockHash)) {
+        throw new Error('Invalid accepted transaction response');
+      }
+      if (tx.conflicted === true) { onCheck(id, 'Explorer reports a conflicted transaction'); return; }
       rememberMined(id);
       recoveredTransactions++;
-      establishLive();
       onConfirmed(id, { ...tx, status: tx.scriptExecutionOk === true ? 'succeeded'
         : tx.scriptExecutionOk === false ? 'failed' : 'mined' });
       onCheck(id, 'Inclusion recovered from the explorer');
     } catch (error) {
-      if (stopped || epoch !== mempoolEpoch || pendingTransactions.get(id) !== record) return;
+      if (stopped || epoch !== confirmationEpoch || confirmationCandidates.get(id) !== record) return;
       confirmationError = controller.signal.aborted ? 'Confirmation request timed out' : `Confirmation: ${error.message}`;
       // Global cooldown protects the explorer when unavailable or rate limited.
       nextConfirmationAt = Date.now() + 30000;
@@ -73,12 +85,41 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, o
     }
   }
   function reconcile() {
-    if (stopped || transport !== 'connected' || confirmationRequest || Date.now() < nextConfirmationAt) return;
+    if (stopped || confirmationRequest || Date.now() < nextConfirmationAt) return;
     const now = Date.now();
-    const candidate = [...pendingTransactions].filter(([, record]) => now >= record.nextCheckAt
-      && (record.recheck || record.missingSnapshots >= 3 || now - record.observedAt >= 60000))
-      .sort((a, b) => a[1].nextCheckAt - b[1].nextCheckAt)[0];
+    let candidate;
+    for (const entry of confirmationCandidates) {
+      const record = entry[1];
+      if (now < record.nextCheckAt || !(record.recheck || record.missingSnapshots >= 3 || now - record.observedAt >= 60000)) continue;
+      if (!candidate || record.nextCheckAt < candidate[1].nextCheckAt) candidate = entry;
+    }
     if (candidate) { candidate[1].recheck = false; void checkTransaction(candidate[0]); }
+  }
+
+  function sweepWaitingTransactions() {
+    // The view is authoritative about who is still visibly waiting. This also
+    // catches passengers whose block was observed but whose animation was lost.
+    if (state !== 'demo') {
+      const waitingIds = new Set(getWaitingTransactions());
+      for (const id of confirmationCandidates.keys()) {
+        if (!pendingTransactions.has(id) && !waitingIds.has(id)) confirmationCandidates.delete(id);
+      }
+      for (const id of waitingIds) {
+        if (!/^[0-9a-f]{64}$/i.test(id)) continue;
+        if (!confirmationCandidates.has(id)) {
+          confirmationCandidates.set(id, { observedAt: Date.now(), missingSnapshots: 0, nextCheckAt: 0 });
+        }
+      }
+    }
+    for (const record of confirmationCandidates.values()) {
+      record.recheck = true;
+      record.nextCheckAt = Math.min(record.nextCheckAt, Date.now());
+    }
+  }
+  function tickHealth() {
+    if (Date.now() >= nextSweepAt) { nextSweepAt = Date.now() + 60000; sweepWaitingTransactions(); }
+    reportHealth();
+    reconcile();
   }
 
   function reportHealth() {
@@ -111,12 +152,13 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, o
     if (!route || minedTransactions.has(id)) return;
     establishLive();
     if (pendingTransactions.has(id)) return;
-    pendingTransactions.set(id, { tx, route, observedAt: Date.now(), missingSnapshots: 0, nextCheckAt: 0 });
+    const record = { tx, route, observedAt: Date.now(), missingSnapshots: 0, nextCheckAt: 0 };
+    pendingTransactions.set(id, record);
+    confirmationCandidates.set(id, record);
     onTransaction(tx, route);
   }
   function stopMempool() {
     mempoolEpoch++;
-    stopConfirmation();
     clearInterval(mempoolTimer);
     clearTimeout(mempoolTimeout);
     mempoolRequest?.abort();
@@ -187,6 +229,7 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, o
     if (stopped) return;
     detach();
     transport = 'reconnecting';
+    for (const record of confirmationCandidates.values()) { record.recheck = true; record.nextCheckAt = Math.min(record.nextCheckAt, Date.now()); }
     if (blockFeed !== 'error') blockFeed = 'disconnected';
     if (txFeed !== 'error') txFeed = 'disconnected';
     reconnects++;
@@ -214,7 +257,7 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, o
       transport = 'connected';
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'subscribe', params: ['block'] }));
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'subscribe', params: ['tx'] }));
-      for (const record of pendingTransactions.values()) record.recheck = true;
+      for (const record of confirmationCandidates.values()) record.recheck = true;
       startMempool();
       reconcile();
       armWatchdog(30000);
@@ -271,19 +314,20 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, o
     transport = 'disconnected';
     clearTimeout(retryTimer); clearTimeout(demoTimer); demoTimer = null;
     detach();
+    stopConfirmation();
   }
   addEventListener('pagehide', stop);
   addEventListener('pageshow', event => {
     if (event.persisted) {
       stopped = false;
-      healthTimer = setInterval(() => { reportHealth(); reconcile(); }, 1000);
+      healthTimer = setInterval(tickHealth, 1000);
       if (state !== 'demo') setState('retry');
       demoTimer = setTimeout(() => { demoTimer = null; setState('demo'); }, 15000);
       connect();
     }
   });
   setState('retry');
-  healthTimer = setInterval(() => { reportHealth(); reconcile(); }, 1000);
+  healthTimer = setInterval(tickHealth, 1000);
   demoTimer = setTimeout(() => { demoTimer = null; setState('demo'); }, 15000);
   connect();
   return { stop, checkTransaction };

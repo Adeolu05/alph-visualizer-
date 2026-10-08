@@ -224,6 +224,7 @@ if (forceDemo) { mode = 'demo'; setMode('demo'); startDemo(); renderNetworkHealt
 else startLiveFeed({
   onHealth: renderNetworkHealth,
   onBlock: depart,
+  getWaitingTransactions: () => [...pendingTransactions.keys()],
   onConfirmed(id) {
     const route = pendingTransactions.get(id);
     if (!route) return;

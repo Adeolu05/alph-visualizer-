@@ -363,7 +363,7 @@ for (const file of ['index.html', 'map.html']) {
   });
 }
 
-const accepted = (tx = pendingTx(), result) => ({ hash: tx.unsigned.txId, type: 'AcceptedTransaction',
+const accepted = (tx = pendingTx(), result) => ({ hash: tx.unsigned.txId, type: 'Accepted',
   blockHash: 'd'.repeat(64), ...(result === undefined ? {} : { scriptExecutionOk: result }) });
 for (const file of ['index.html', 'map.html']) {
   test(`${file}: missed inclusion recovers after reconnect and stale snapshots cannot resurrect it`, async () => {
@@ -385,7 +385,7 @@ test('three missing snapshots check inclusion; pending, 404, malformed and HTTP 
   const h = harness(); h.setMempool(async () => response(snapshot()));
   h.run('globalThis.confirmed = []; globalThis.feed = startLiveFeed({ onBlock() {}, onTransaction() {}, onState() {}, onConfirmed: (id, tx) => confirmed.push(tx) });');
   h.sockets[0].open(); await h.tick(0); h.setMempool(async () => response([]));
-  h.setExplorer(async () => response({ hash: pendingTx().unsigned.txId, type: 'PendingTransaction' }));
+  h.setExplorer(async () => response({ hash: pendingTx().unsigned.txId, type: 'Pending' }));
   await h.tick(2000); assert.equal(h.requests.filter(url => url.includes('/transactions/')).length, 0);
   await h.tick(1000); assert.equal(h.requests.filter(url => url.includes('/transactions/')).length, 1);
   assert.equal(h.run('confirmed.length'), 0);
@@ -425,7 +425,7 @@ test('block inclusion and pagehide win over delayed confirmation responses', asy
   }
 });
 
-test('old passengers are checked even while still present in snapshots, serially', async () => {
+test('minute sweep checks passengers even in stale fullnode snapshots, serially', async () => {
   const h = harness(); const other = pendingTx(12);
   h.setMempool(async () => response([{ fromGroup: 1, toGroup: 2, transactions: [pendingTx(), other] }]));
   h.run('globalThis.confirmed = []; startLiveFeed({ onBlock() {}, onTransaction() {}, onState() {}, onConfirmed: (id, tx) => confirmed.push(tx) });');
@@ -457,4 +457,75 @@ test('confirmation timeout keeps passenger pending and permits a later retry', a
   for (let i = 0; i < 4; i++) { h.sockets[0].message(notification(block(i + 10))); await h.tick(10000); }
   assert.equal(h.run('confirmed.length'), 1);
   assert.equal(h.run('health.confirmationError'), '');
+});
+
+test('station keeps the observed block train when the socket closes during its arrival delay', async () => {
+  const h = harness(); h.setMempool(async () => response(snapshot())); h.load('index.html');
+  const ws = h.sockets[0]; ws.open(); await h.tick(0);
+  ws.message(notification(block(2, [{ ...pendingTx(), scriptExecutionOk: true }, coinbase])));
+  ws.onclose(); await h.tick(600);
+  assert.equal(h.run('people[0].status'), 'succeeded');
+  assert.equal(h.run('platforms[1].queue.length'), 1, 'mined passenger must retain its train during reconnect');
+  h.run('stepTrains(1000)');
+  assert.equal(h.run('people[0].state'), 'board');
+});
+
+test('backend validation continues while WebSocket remains disconnected', async () => {
+  const h = harness(); h.setMempool(async () => response(snapshot()));
+  h.run('globalThis.confirmed = []; startLiveFeed({ onBlock() {}, onTransaction() {}, onState() {}, onConfirmed: (id, tx) => confirmed.push(tx) });');
+  const ws = h.sockets[0]; ws.open(); await h.tick(0); ws.onclose();
+  h.setExplorer(async () => response(accepted(pendingTx(), true)));
+  await h.tick(6000);
+  assert.equal(h.run('confirmed.length'), 1);
+});
+
+test('a 404 for one passenger does not pause validation of other passengers', async () => {
+  const h = harness(), other = pendingTx(12);
+  h.setMempool(async () => response([{ fromGroup: 1, toGroup: 2, transactions: [pendingTx(), other] }]));
+  h.run('globalThis.confirmed = []; startLiveFeed({ onBlock() {}, onTransaction() {}, onState() {}, onConfirmed: id => confirmed.push(id) });');
+  h.sockets[0].open(); await h.tick(0); h.setMempool(async () => response([]));
+  h.setExplorer(async url => url.endsWith(pendingTx().unsigned.txId) ? { ok: false, status: 404 } : response(accepted(other, true)));
+  await h.tick(4000);
+  assert.equal(h.run('confirmed.length'), 1);
+  assert.equal(h.run('confirmed[0]'), other.unsigned.txId);
+});
+
+test('reported station transaction clears using its actual backend Accepted response despite a stale fullnode snapshot', async () => {
+  const mined = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/mined-transaction.json'), 'utf8'));
+  const tx = pendingTx(); tx.unsigned.txId = mined.hash;
+  const h = harness(); h.setMempool(async () => response(snapshot(tx)));
+  h.setExplorer(async url => { assert.equal(url, `https://backend.mainnet.alephium.org/transactions/${mined.hash}`); return response(mined); });
+  h.load('index.html'); h.sockets[0].open(); await h.tick(0);
+  assert.equal(h.run('people.some(p => p.hash === "' + mined.hash + '")'), true);
+  for (let i = 0; i < 6; i++) { h.sockets[0].message(notification(block(i + 10))); await h.tick(10000); }
+  assert.equal(h.run('people.some(p => p.hash === "' + mined.hash + '")'), false);
+  assert.equal(h.elements.get('sMempool').textContent, '1', 'mempool count remains the fullnode snapshot count');
+  await h.tick(2000);
+  assert.equal(h.run('people.some(p => p.hash === "' + mined.hash + '")'), false);
+});
+
+test('minute sweep recovers a station passenger absent from the feed pending list', async () => {
+  const mined = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/mined-transaction.json'), 'utf8'));
+  const h = harness(); h.setExplorer(async () => response(mined)); h.load('index.html');
+  const ws = h.sockets[0]; ws.open(); await h.tick(0);
+  // Reproduce a mined animation orphan: visible in the view, absent from feed pending state.
+  h.context.orphan = { hash: mined.hash, status: 'succeeded' };
+  h.run('spawnPerson(1, 2, orphan)');
+  for (let i = 0; i < 5; i++) { ws.message(notification(block(i + 20))); await h.tick(10000); }
+  assert.equal(h.requests.filter(url => url.includes('/transactions/')).length, 0);
+  ws.message(notification(block(25))); await h.tick(10000);
+  assert.equal(h.requests.filter(url => url.includes('/transactions/')).length, 1);
+  assert.equal(h.run('people.some(p => p.hash === orphan.hash)'), false);
+});
+
+test('WebSocket disconnect does not abort an in-flight backend confirmation', async () => {
+  const h = harness(); h.setMempool(async () => response(snapshot()));
+  h.run('globalThis.confirmed = []; startLiveFeed({ onBlock() {}, onTransaction() {}, onState() {}, onConfirmed: id => confirmed.push(id) });');
+  const ws = h.sockets[0]; ws.open(); await h.tick(0); h.setMempool(async () => response([]));
+  let resolve, signal;
+  h.setExplorer((url, options) => { signal = options.signal; return new Promise(r => { resolve = r; }); });
+  await h.tick(3000); ws.onclose();
+  assert.equal(signal.aborted, false);
+  resolve(response(accepted(pendingTx(), true))); await h.tick(0);
+  assert.equal(h.run('confirmed.length'), 1);
 });

@@ -456,6 +456,7 @@
     $('networkHealth').classList.add('panel');
   } else {
     reconciliation = startLiveFeed({ onBlock: receiveBlock, onTransaction: receiveTransaction, onState: setMode,
+      getWaitingTransactions: () => [...pending.keys()],
       onConfirmed(id, tx) {
         const p = pending.get(id);
         if (!p) return;
