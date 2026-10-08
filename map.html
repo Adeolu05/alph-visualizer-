@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link id="windTurbineIcon" rel="icon" type="image/svg+xml" href="favicon.svg">
+<script src="favicon.js" defer></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ℵ Metro: Alephium live</title>
 <meta name="description" content="Watch Alephium live as a metro: 4 districts, 16 lines, every block a train, every transaction a passenger.">
@@ -222,6 +224,12 @@ if (forceDemo) { mode = 'demo'; setMode('demo'); startDemo(); renderNetworkHealt
 else startLiveFeed({
   onHealth: renderNetworkHealth,
   onBlock: depart,
+  onConfirmed(id) {
+    const route = pendingTransactions.get(id);
+    if (!route) return;
+    waiting[route.chainFrom][route.chainTo] = Math.max(0, waiting[route.chainFrom][route.chainTo] - 1);
+    pendingTransactions.delete(id);
+  },
   onTransaction(tx, route) {
     if (pendingTransactions.has(tx.unsigned.txId)) return;
     pendingTransactions.set(tx.unsigned.txId, route);

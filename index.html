@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link id="windTurbineIcon" rel="icon" type="image/svg+xml" href="favicon.svg">
+<script src="favicon.js" defer></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ℵ Central Station</title>
 <meta name="description" content="Alephium live as a night-time train station: every block is a train, every transaction a passenger catching it.">
@@ -693,6 +695,12 @@ if (forceDemo) { mode = 'demo'; setMode('demo'); startDemo(); renderNetworkHealt
 else startLiveFeed({
   onHealth: renderNetworkHealth,
   onBlock: arrive,
+  onConfirmed(id, tx) {
+    // Recover missed inclusion without inventing a block/train or inflating block metrics.
+    for (let i = people.length - 1; i >= 0; i--) {
+      if (people[i].hash === id) { Object.assign(people[i], { status: tx.status }); people.splice(i, 1); }
+    }
+  },
   onTransaction(tx, { chainFrom, chainTo }) {
     spawnPerson(chainFrom, chainTo, streamTransactionInfo(tx));
   },

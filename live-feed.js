@@ -1,5 +1,5 @@
 // Shared by both views; classic scripts also work when opened directly from disk.
-function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} }) {
+function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {}, onConfirmed = () => {}, onCheck = () => {} }) {
   const url = 'wss://ws.fullnode.alephium.notrustverify.ch/events';
   const mempoolUrl = 'https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions';
   const seen = new Set();
@@ -11,12 +11,81 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
   let mempoolTimer, mempoolRequest, mempoolTimeout, mempoolEpoch = 0;
   let mempoolFeed = 'pending', lastMempoolAt = 0, mempoolCount = 0, mempoolError = '';
   const samples = [];
+  let confirmationRequest, confirmationTimeout, nextConfirmationAt = 0;
+  let confirmationError = '', recoveredTransactions = 0;
+
+  function rememberMined(id) {
+    pendingTransactions.delete(id);
+    minedTransactions.add(id);
+    if (minedTransactions.size > 20000) {
+      for (const hash of [...minedTransactions].slice(0, 10000)) minedTransactions.delete(hash);
+    }
+  }
+  function stopConfirmation() {
+    clearTimeout(confirmationTimeout);
+    confirmationRequest?.abort();
+    confirmationRequest = null;
+  }
+  async function checkTransaction(id) {
+    const record = pendingTransactions.get(id), now = Date.now();
+    if (!record || stopped || transport !== 'connected' || confirmationRequest || now < nextConfirmationAt) return;
+    const controller = new AbortController();
+    confirmationRequest = controller;
+    const epoch = mempoolEpoch;
+    record.nextCheckAt = now + 30000;
+    nextConfirmationAt = now + 1000;
+    confirmationTimeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(`https://backend.mainnet.alephium.org/transactions/${id}`, {
+        cache: 'no-store', signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const tx = await response.json();
+      if (stopped || epoch !== mempoolEpoch || pendingTransactions.get(id) !== record) return;
+      if (!tx || tx.hash !== id || (tx.scriptExecutionOk !== undefined && typeof tx.scriptExecutionOk !== 'boolean')) {
+        throw new Error('Invalid transaction response');
+      }
+      confirmationError = '';
+      // Pending, missing, and unknown results never prove inclusion.
+      if (tx.type === 'PendingTransaction' || !tx.blockHash) {
+        onCheck(id, 'Not confirmed by the explorer yet');
+        return;
+      }
+      if (!/^[0-9a-f]{64}$/i.test(tx.blockHash)) throw new Error('Invalid block hash');
+      rememberMined(id);
+      recoveredTransactions++;
+      establishLive();
+      onConfirmed(id, { ...tx, status: tx.scriptExecutionOk === true ? 'succeeded'
+        : tx.scriptExecutionOk === false ? 'failed' : 'mined' });
+      onCheck(id, 'Inclusion recovered from the explorer');
+    } catch (error) {
+      if (stopped || epoch !== mempoolEpoch || pendingTransactions.get(id) !== record) return;
+      confirmationError = controller.signal.aborted ? 'Confirmation request timed out' : `Confirmation: ${error.message}`;
+      // Global cooldown protects the explorer when unavailable or rate limited.
+      nextConfirmationAt = Date.now() + 30000;
+      onCheck(id, confirmationError);
+    } finally {
+      if (confirmationRequest === controller) {
+        clearTimeout(confirmationTimeout);
+        confirmationRequest = null;
+        reportHealth();
+      }
+    }
+  }
+  function reconcile() {
+    if (stopped || transport !== 'connected' || confirmationRequest || Date.now() < nextConfirmationAt) return;
+    const now = Date.now();
+    const candidate = [...pendingTransactions].filter(([, record]) => now >= record.nextCheckAt
+      && (record.recheck || record.missingSnapshots >= 3 || now - record.observedAt >= 60000))
+      .sort((a, b) => a[1].nextCheckAt - b[1].nextCheckAt)[0];
+    if (candidate) { candidate[1].recheck = false; void checkTransaction(candidate[0]); }
+  }
 
   function reportHealth() {
     const now = Date.now();
     while (samples.length && samples[0].at <= now - 60000) samples.shift();
     onHealth({ mode: state, transport, blockFeed, txFeed, reconnects, lastBlockAt, lastTxAt, lastError,
-      mempoolFeed, lastMempoolAt, mempoolCount, mempoolError,
+      mempoolFeed, lastMempoolAt, mempoolCount, mempoolError, confirmationError, recoveredTransactions,
       blocks: samples.length, transactions: samples.reduce((sum, sample) => sum + sample.transactions, 0),
       failedTransactions: samples.reduce((sum, sample) => sum + sample.failed, 0) });
   }
@@ -42,11 +111,12 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
     if (!route || minedTransactions.has(id)) return;
     establishLive();
     if (pendingTransactions.has(id)) return;
-    pendingTransactions.set(id, { tx, route });
+    pendingTransactions.set(id, { tx, route, observedAt: Date.now(), missingSnapshots: 0, nextCheckAt: 0 });
     onTransaction(tx, route);
   }
   function stopMempool() {
     mempoolEpoch++;
+    stopConfirmation();
     clearInterval(mempoolTimer);
     clearTimeout(mempoolTimeout);
     mempoolRequest?.abort();
@@ -79,9 +149,13 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
           publishTransaction(tx, route);
         }
       }
-      // Disappearance from a node's mempool does not prove inclusion or execution.
+      for (const [id, record] of pendingTransactions) {
+        record.missingSnapshots = ids.has(id) ? 0 : record.missingSnapshots + 1;
+      }
+      // Disappearance triggers a status lookup, never an assumed confirmation.
       mempoolCount = ids.size;
       lastMempoolAt = Date.now(); mempoolFeed = 'active'; mempoolError = '';
+      reconcile();
     } catch (error) {
       if (stopped || epoch !== mempoolEpoch) return;
       mempoolFeed = 'error';
@@ -140,7 +214,9 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
       transport = 'connected';
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'subscribe', params: ['block'] }));
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'subscribe', params: ['tx'] }));
+      for (const record of pendingTransactions.values()) record.recheck = true;
       startMempool();
+      reconcile();
       armWatchdog(30000);
       reportHealth();
     };
@@ -178,12 +254,7 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
       if (txFeed !== 'error') lastError = '';
       if (seen.has(block.hash)) { establishLive(); reportHealth(); return; }
       seen.add(block.hash);
-      block.transactions.forEach(tx => {
-        pendingTransactions.delete(tx.unsigned.txId);
-        minedTransactions.add(tx.unsigned.txId);
-      });
-      // Bound the recent-inclusion cache; retain pending IDs until their block arrives.
-      if (minedTransactions.size > 20000) for (const hash of [...minedTransactions].slice(0, 10000)) minedTransactions.delete(hash);
+      block.transactions.forEach(tx => rememberMined(tx.unsigned.txId));
       establishLive();
       if (seen.size > 2000) for (const hash of [...seen].slice(0, 1500)) seen.delete(hash);
       samples.push({ at: Date.now(), transactions: Math.max(0, block.transactions.length - 1),
@@ -205,17 +276,17 @@ function startLiveFeed({ onBlock, onTransaction, onState, onHealth = () => {} })
   addEventListener('pageshow', event => {
     if (event.persisted) {
       stopped = false;
-      healthTimer = setInterval(reportHealth, 1000);
+      healthTimer = setInterval(() => { reportHealth(); reconcile(); }, 1000);
       if (state !== 'demo') setState('retry');
       demoTimer = setTimeout(() => { demoTimer = null; setState('demo'); }, 15000);
       connect();
     }
   });
   setState('retry');
-  healthTimer = setInterval(reportHealth, 1000);
+  healthTimer = setInterval(() => { reportHealth(); reconcile(); }, 1000);
   demoTimer = setTimeout(() => { demoTimer = null; setState('demo'); }, 15000);
   connect();
-  return { stop };
+  return { stop, checkTransaction };
 }
 
 function validStreamTransaction(tx) {
@@ -269,6 +340,11 @@ function renderNetworkHealth(health) {
   const set = (id, text) => { document.getElementById(id).textContent = text; };
   const panel = document.getElementById('networkHealth');
   panel.className = 'network-health ' + (health.transport || 'connecting');
+  const recovered = document.getElementById('recoveredTx');
+  if (recovered) recovered.textContent = health.recoveredTransactions || 0;
+  const recovery = document.getElementById('reconciliationStatus');
+  if (recovery) recovery.textContent = health.mode === 'demo' ? 'Off in demo'
+    : health.confirmationError || 'Automatic explorer checks';
   set('healthConnection', health.mode === 'demo' ? 'demo · ' + health.transport : health.transport);
   set('healthBlocks', health.blocks || 0);
   set('healthTx', health.transactions || 0);
@@ -293,7 +369,7 @@ function renderNetworkHealth(health) {
   set('healthReconnects', health.reconnects || 0);
   set('healthNote', health.mode === 'demo' ? 'Simulated traffic excluded from network metrics' : 'Observed in the last 60s · rewards excluded');
   const error = document.getElementById('healthError');
-  error.textContent = [health.lastError, health.mempoolError].filter(Boolean).join(' · ');
+  error.textContent = [health.lastError, health.mempoolError, health.confirmationError].filter(Boolean).join(' · ');
   error.hidden = !error.textContent;
 }
 
