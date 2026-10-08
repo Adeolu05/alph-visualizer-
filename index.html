@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link id="windTurbineIcon" rel="icon" type="image/svg+xml" href="favicon.svg">
+<script src="favicon.js" defer></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ℵ Central Station</title>
 <meta name="description" content="Alephium live as a night-time train station: every block is a train, every transaction a passenger catching it.">
@@ -615,7 +617,7 @@ async function lookup(q, seq) {
     } else {
       const tx = await getJSON(`/transactions/${q}`);
       if (seq !== findSeq) return;
-      const pending = tx.type === 'PendingTransaction' || !tx.blockHash;
+      const pending = tx.type === 'Pending' || tx.type === 'PendingTransaction' || !tx.blockHash;
       showPanel(`<b>Transaction ${short(q)}</b><br>${pending ? '⏳ Waiting on the platform. Look for the green arrow!' : `✅ Already departed ${ago(tx.timestamp)} in block ${short(tx.blockHash)}`}
         <br><a href="${EXPLORER}/transactions/${q}" target="_blank" rel="noopener">open in explorer ↗</a>`);
     }
@@ -665,7 +667,8 @@ function arrive(b) {
     if (p) { Object.assign(p, r, { f: b.chainFrom, to: b.chainTo }); p.whale = p.alph >= WHALE; p.found = matches(p); }
     else spawnPerson(b.chainFrom, b.chainTo, { ...r, late: true });
   });
-  setTimeout(() => { if (mode === 'live') enqueueTrain(b, riders, miner); }, 600);
+  // The block is already observed: a reconnect must not strand its passengers.
+  setTimeout(() => { if (mode !== 'demo') enqueueTrain(b, riders, miner); }, 600);
 }
 const demoHeight = Array.from({ length: G * G }, () => 4_200_000 + rnd(1000));
 const fakeHash = () => [...Array(64)].map(() => '0123456789abcdef'[rnd(16)]).join('');
@@ -693,6 +696,13 @@ if (forceDemo) { mode = 'demo'; setMode('demo'); startDemo(); renderNetworkHealt
 else startLiveFeed({
   onHealth: renderNetworkHealth,
   onBlock: arrive,
+  getWaitingTransactions: () => people.filter(p => p.hash && !p.miner && p.state !== 'board').map(p => p.hash),
+  onConfirmed(id, tx) {
+    // Recover missed inclusion without inventing a block/train or inflating block metrics.
+    for (let i = people.length - 1; i >= 0; i--) {
+      if (people[i].hash === id) { Object.assign(people[i], { status: tx.status }); people.splice(i, 1); }
+    }
+  },
   onTransaction(tx, { chainFrom, chainTo }) {
     spawnPerson(chainFrom, chainTo, streamTransactionInfo(tx));
   },

@@ -159,6 +159,12 @@
     rect(ctx, x - 1, y, 3, 13, '#4f3940'); rect(ctx, x - size / 2, y - size, size, size, '#243b39');
     rect(ctx, x - size / 2 + 3, y - size + 2, size - 6, size - 5, '#335046'); rect(ctx, x - size / 2 + 3, y - size + 2, 4, size / 2, '#47634e');
   }
+  function localSkyPosition(time) {
+    const hour = time.getHours() + time.getMinutes() / 60;
+    const daylight = hour >= 6 && hour < 18;
+    const progress = (daylight ? hour - 6 : (hour + 6) % 24) / 12;
+    return { daylight, x: .1 + progress * .8, y: .65 - Math.sin(progress * Math.PI) * .5 };
+  }
   function drawTown() {
     const canvas = $('townSkyline'), bounds = canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
     const W = bounds.width, H = bounds.height;
@@ -403,7 +409,7 @@
       + (p.demo ? '<p class="inspect-note">This journey is simulated and has no explorer record.</p>' : `<a class="explorer-link" href="${EXPLORER}/${isTrain ? 'blocks' : 'transactions'}/${p.hash}" target="_blank" rel="noopener">Open in Alephium explorer ↗</a>`)
       + (isTrain && p.miner && !p.demo ? `<a class="explorer-link miner-link" href="${EXPLORER}/transactions/${p.miner.hash}" target="_blank" rel="noopener">Open mining-reward transaction ↗</a>` : '')
       + (!isTrain && !p.demo && pending.has(p.hash) ? '<button id="checkTransaction" class="text-button">Check confirmation now</button>' : '');
-    if ($('checkTransaction')) $('checkTransaction').onclick = () => reconciliation?.check(p);
+    if ($('checkTransaction')) $('checkTransaction').onclick = () => reconciliation?.checkTransaction(p.hash);
   }
   function inspect(hit) {
     inspected = hit; renderInspector(hit);
@@ -449,17 +455,18 @@
     renderNetworkHealth({ mode: 'demo', transport: 'disconnected', blockFeed: 'disabled', txFeed: 'disabled' });
     $('networkHealth').classList.add('panel');
   } else {
-    reconciliation = startTransactionReconciliation({
-      getPending: () => [...pending.values()], isActive: () => mode === 'live',
-      onConfirmed: (p, tx) => {
-        pending.delete(p.hash); scenes[p.f].people.delete(p.hash);
-        p.status = tx.scriptExecutionOk === true ? 'succeeded' : tx.scriptExecutionOk === false ? 'failed' : 'mined';
-        p.blockHash = tx.blockHash; updateUi();
+    reconciliation = startLiveFeed({ onBlock: receiveBlock, onTransaction: receiveTransaction, onState: setMode,
+      getWaitingTransactions: () => [...pending.keys()],
+      onConfirmed(id, tx) {
+        const p = pending.get(id);
+        if (!p) return;
+        pending.delete(id); scenes[p.f].people.delete(id);
+        p.status = tx.status; p.blockHash = tx.blockHash; updateUi();
       },
-      onCheck: (p, message) => { p.checkMessage = message; if ($('inspector').open && inspected?.value === p) renderInspector(inspected); },
-      onHealth: renderConfirmationHealth,
-    });
-    startLiveFeed({ onBlock: receiveBlock, onTransaction: receiveTransaction, onState: setMode,
+      onCheck(id, message) {
+        const p = pending.get(id) || (inspected?.value.hash === id ? inspected.value : null);
+        if (p) { p.checkMessage = message; if ($('inspector').open && inspected?.value === p) renderInspector(inspected); }
+      },
       onHealth: health => { renderNetworkHealth(health); $('networkHealth').classList.add('panel'); } });
   }
   addEventListener('pagehide', () => { clearInterval(demoTimer); demoTimer = null; });

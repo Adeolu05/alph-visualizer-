@@ -9,8 +9,8 @@ let server, browser, base;
 before(async () => {
   server = http.createServer(async (req, res) => {
     const file = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
-    if (!['index.html', 'map.html', 'live-feed.js', 'og.png', 'og-map.png'].includes(file)) { res.writeHead(404).end(); return; }
-    const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.js') ? 'text/javascript' : 'image/png';
+    if (!['index.html', 'map.html', 'yard.html', 'yard.js', 'yard.css', 'live-feed.js', 'favicon.js', 'favicon.svg', 'wraps/wraps.js', 'og.png', 'og-map.png'].includes(file)) { res.writeHead(404).end(); return; }
+    const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
     res.writeHead(200, { 'Content-Type': type }); res.end(await fs.readFile(path.join(root, file)));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -34,11 +34,12 @@ function monitor(page) {
 }
 
 for (const file of ['index.html', 'map.html']) for (const width of [1440, 390]) {
-  test(`${file} at ${width}px: health, exact boarding, reconnect, demo, and no backend traffic`, async () => {
+  test(`${file} at ${width}px: health, exact boarding, reconnect, demo, and targeted confirmation checks`, async () => {
     const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 900 } });
     try {
       const page = await context.newPage(), observed = monitor(page);
       await page.route('https://api.coingecko.com/**', route => route.abort());
+      await page.route('https://backend.mainnet.alephium.org/transactions/*', route => route.fulfill({ json: { hash: userTx.unsigned.txId, type: 'Pending' } }));
       await page.clock.install();
       let mempool = [userTx], mempoolRequests = 0;
       await page.route('https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions', route => {
@@ -104,13 +105,13 @@ for (const file of ['index.html', 'map.html']) for (const width of [1440, 390]) 
       assert.match(await page.locator('#mode').textContent(), /LIVE/);
       assert.ok(Number(await page.locator('#healthReconnects').textContent()) >= 1);
       assert.deepEqual(observed.errors, []);
-      assert.deepEqual(observed.backend, []);
+      assert.ok(observed.backend.every(url => /^https:\/\/backend\.mainnet\.alephium\.org\/transactions\/[0-9a-f]{64}$/.test(url)));
     } finally { await context.close(); }
   });
 }
 
 for (const file of ['index.html', 'map.html']) {
-  test(`${file}: live endpoint renders in Chromium and makes zero automatic backend requests`, { skip: process.env.ALPH_LIVE_BROWSER !== '1', timeout: 90000 }, async () => {
+  test(`${file}: live endpoint renders in Chromium with targeted confirmation requests`, { skip: process.env.ALPH_LIVE_BROWSER !== '1', timeout: 90000 }, async () => {
     const context = await browser.newContext({ viewport: { width: file === 'index.html' ? 1440 : 390, height: 900 } });
     try {
       const page = await context.newPage(), observed = monitor(page);
@@ -124,7 +125,72 @@ for (const file of ['index.html', 'map.html']) {
       assert.equal(await page.locator('#healthBlockFeed').textContent(), 'active');
       assert.equal(await page.locator('#healthTxFeed').textContent(), 'active');
       assert.deepEqual(observed.errors, []);
-      assert.deepEqual(observed.backend, []);
+      assert.ok(observed.backend.every(url => /^https:\/\/backend\.mainnet\.alephium\.org\/transactions\/[0-9a-f]{64}$/.test(url)));
     } finally { await context.close(); }
   });
 }
+
+for (const file of ['index.html', 'map.html', 'yard.html']) {
+  test(`${file}: explorer recovery clears a passenger mined during disconnect`, async () => {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    try {
+      const page = await context.newPage(), observed = monitor(page);
+      await page.clock.install();
+      await page.route('https://api.coingecko.com/**', route => route.abort());
+      let mempool = [userTx], checks = 0;
+      await page.route('https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions', route => route.fulfill({
+        json: [{ fromGroup: 1, toGroup: 2, transactions: mempool }],
+      }));
+      await page.route('https://backend.mainnet.alephium.org/transactions/*', route => {
+        assert.ok(route.request().url().endsWith(userTx.unsigned.txId)); checks++;
+        if (mempool.length) return route.fulfill({ json: { type: 'Pending', hash: userTx.unsigned.txId } });
+        return route.fulfill({ json: { type: 'Accepted', hash: userTx.unsigned.txId,
+          blockHash: 'd'.repeat(64), scriptExecutionOk: false } });
+      });
+      const connections = [];
+      await page.routeWebSocket('**/events', ws => {
+        connections.push(ws);
+        ws.onMessage(data => { const message = JSON.parse(data);
+          ws.send(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: message.params[0] }));
+          if (message.id === 2) ws.send(JSON.stringify(block()));
+        });
+      });
+      await page.goto(`${base}/${file}`);
+      await page.clock.runFor(5000);
+      assert.equal(await page.locator('#sWait').textContent(), '1');
+      mempool = []; connections.at(-1).close();
+      await page.clock.runFor(2500);
+      assert.ok(checks >= 1);
+      assert.equal(await page.locator('#sWait').textContent(), '0');
+      assert.equal(await page.locator('#healthBlocks').textContent(), '1', 'no invented block');
+      mempool = [userTx]; await page.clock.runFor(2000);
+      assert.equal(await page.locator('#sWait').textContent(), '0', 'stale snapshot cannot restore passenger');
+      assert.deepEqual(observed.errors, []);
+    } finally { await context.close(); }
+  });
+}
+
+test('station minute sweep clears a visible animation orphan using the reported transaction response', async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  try {
+    const page = await context.newPage(), observed = monitor(page);
+    const mined = JSON.parse(await fs.readFile(path.join(__dirname, 'fixtures/mined-transaction.json'), 'utf8'));
+    await page.clock.install();
+    await page.route('https://api.coingecko.com/**', route => route.abort());
+    await page.route('https://lb-fullnode-alephium.notrustverify.ch/mempool/transactions', route => route.fulfill({ json: [] }));
+    let checks = 0, socket;
+    await page.route(`https://backend.mainnet.alephium.org/transactions/${mined.hash}`, route => { checks++; return route.fulfill({ json: mined }); });
+    await page.routeWebSocket('**/events', ws => {
+      socket = ws; ws.onMessage(data => { const message = JSON.parse(data);
+        ws.send(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: message.params[0] }));
+        if (message.id === 2) ws.send(JSON.stringify(block()));
+      });
+    });
+    await page.goto(`${base}/index.html`); await page.clock.runFor(5000);
+    await page.evaluate(tx => spawnPerson(1, 2, { hash: tx.hash, status: 'succeeded' }), mined);
+    for (let height = 2; height <= 4; height++) { socket.send(JSON.stringify(block(height))); await page.clock.fastForward(20000); }
+    await page.waitForFunction(hash => !people.some(p => p.hash === hash), mined.hash);
+    assert.equal(checks, 1);
+    assert.deepEqual(observed.errors, []);
+  } finally { await context.close(); }
+});
