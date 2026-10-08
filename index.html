@@ -60,6 +60,11 @@
   .stat b { font-size:15px; margin-right:4px; } .stat span { color:var(--dim); font-size:11px; }
   #tip { position:fixed; display:none; z-index:5; background:var(--panel); border:1px solid #a08bff; border-radius:8px;
     padding:8px 10px; font-size:12px; max-width:260px; box-shadow:0 6px 24px rgba(0,0,0,.5); }
+  #donate { position:fixed; z-index:6; top:64px; right:16px; width:300px; max-width:calc(100% - 32px); background:var(--panel);
+    border:1px solid #a08bff; border-radius:10px; padding:12px 14px; font-size:12px; box-shadow:0 6px 24px rgba(0,0,0,.5); }
+  #donate p { margin:6px 0 8px; color:#c3c9e8; } #donate code { display:block; word-break:break-all; background:#0b0c12;
+    border:1px solid var(--line); border-radius:6px; padding:8px; color:#5dffa8; font-size:12px; }
+  #donate .row { display:flex; gap:8px; margin-top:8px; } #donate .x { float:right; cursor:pointer; color:var(--dim); }
   #tip a { color:#5dd6ff; } #tip .x { float:right; cursor:pointer; color:var(--dim); margin-left:8px; }
   .network-health { position:fixed; left:16px; z-index:3; width:265px; max-width:calc(100% - 32px); background:var(--panel); border:1px solid var(--line); border-radius:8px; font-size:11px; }
   .network-health summary { cursor:pointer; padding:7px 10px; color:#c3c9e8; }
@@ -84,6 +89,7 @@
   <input id="find" placeholder="🔎 find tx or address" autocomplete="off" spellcheck="false">
   <button id="snd" class="badge" title="Station sounds">🔇</button>
   <a class="badge" href="map.html">🗺 map</a>
+  <button id="donateBtn" class="badge" title="Support the station">💜 Donate</button>
   <details class="color-legend">
     <summary class="badge">Color legend</summary>
     <div class="legend-body">
@@ -127,6 +133,14 @@
   <div class="stat"><b id="sLast">–</b><span>last train</span></div>
 </div>
 <div id="tip"></div>
+<div id="donate" hidden>
+  <span class="x" id="donateClose">✕</span>
+  <b>💜 Keep the station running</b>
+  <p>Enjoying the trains? Tips in ALPH help pay for new features and community art.</p>
+  <code id="donateAddr">12qBeSdDfeXjtftgqv51SvTq6srzEwbN6rFXzVJgcanGi</code>
+  <div class="row"><button id="donateCopy" class="badge">Copy address</button>
+  <a class="badge" href="https://explorer.alephium.org/addresses/12qBeSdDfeXjtftgqv51SvTq6srzEwbN6rFXzVJgcanGi" target="_blank" rel="noopener">View ↗</a></div>
+</div>
 
 <script src="live-feed.js"></script>
 <script src="wraps/wraps.js"></script>
@@ -426,22 +440,48 @@ function drawTrain(tr, row, t) {
 
 // ---- scenery ----
 let weather = { rain: 0, until: 0 }, shooting = null;
+// ---- donate panel ----
+{
+  const panel = document.getElementById('donate'), copy = document.getElementById('donateCopy');
+  document.getElementById('donateBtn').onclick = () => { panel.hidden = !panel.hidden; };
+  document.getElementById('donateClose').onclick = () => { panel.hidden = true; };
+  copy.onclick = async () => {
+    const addr = document.getElementById('donateAddr').textContent;
+    try { await navigator.clipboard.writeText(addr); copy.textContent = 'Copied ✓'; }
+    catch { getSelection().selectAllChildren(document.getElementById('donateAddr')); copy.textContent = 'Press Ctrl+C'; }
+    setTimeout(() => { copy.textContent = 'Copy address'; }, 2000);
+  };
+}
+
 // ---- ecosystem murals: app logos painted on their own skyline buildings; click to open the app ----
-// Desktop spots sit in the sky gaps: between the network panel and the turbines, and between the neon sign and the
-// departures board. On phones the header covers most of the sky, so they line up small in the top-right corner.
+// Desktop: the first mural sits between the network panel and the turbines; the rest line up right of the neon sign,
+// stopping before the departures board if it hangs down over the sky. Sizes shrink to fit narrower screens.
+// On phones the header covers most of the sky, so they line up small in the top-right corner.
 const MURALS = [
   { name: 'Elexium', url: 'https://elexium.finance/', img: 'murals/elexium.png', x: 0.205, color: '#e9dcc0' },
+  { name: 'Powfi', url: 'https://powfi.alephium.org/', img: 'murals/powfi.png', x: 0, color: '#ff6a3d' },
   { name: 'Linx', url: 'https://linxlabs.org/', img: 'murals/linx.png', x: 0.645, color: '#b07cff' },
   { name: 'Aura', url: 'https://aura.markets/', img: 'murals/aura.png', x: 0.725, color: '#8f6bff' },
 ];
 if (typeof Image !== 'undefined') MURALS.forEach(m => { m.image = new Image(); m.image.src = m.img; });
 function muralRects() {
-  const mobile = W < 700, top = rows[0].y0, s = mobile ? 26 : Math.round(Math.max(30, Math.min(52, top * 0.2)));
-  return MURALS.map((m, i) => {
+  const mobile = W < 700, top = rows[0].y0, gap = mobile ? 4 : 8;
+  let s = mobile ? 26 : Math.round(Math.max(30, Math.min(52, top * 0.2)));
+  const place = (m, bx, s) => {
     const bw = s + 18, bh = Math.round(Math.min(top * 0.62, s * 2.6));
-    const bx = mobile ? W - 8 - (MURALS.length - i) * (bw + 4) : Math.round(W * m.x), by = top - bh;
-    return { m, bx, by, bw, bh, lx: bx + 9, ly: top - s - 10, s };
-  });
+    return { m, bx: Math.round(bx), by: top - bh, bw, bh, lx: Math.round(bx) + 9, ly: top - s - 10, s };
+  };
+  if (mobile) return MURALS.map((m, i) => place(m, W - 8 - (MURALS.length - i) * (s + 18 + gap), s));
+  // right group: from just past the neon sign to the board (only if the board reaches down into the mural band)
+  const fs = Math.max(16, Math.min(34, W * 0.03)), signRight = W / 2 + fs * 5.6 + 12;
+  const board = document.getElementById('board')?.getBoundingClientRect();
+  const bandTop = top - s * 1.5;
+  const limit = board && board.bottom > bandTop && board.left > signRight ? board.left - 10 : W - 12;
+  const right = MURALS.slice(1), room = limit - signRight;
+  s = Math.max(22, Math.min(s, Math.floor(room / right.length) - 18 - gap));
+  const net = document.getElementById('networkHealth')?.getBoundingClientRect();
+  const leftX = Math.max(W * 0.205, net && net.width ? net.right + 14 : 0);
+  return [place(MURALS[0], leftX, s), ...right.map((m, i) => place(m, signRight + i * (s + 18 + gap), s))];
 }
 function drawMurals(t, pal) {
   muralRects().forEach(({ m, bx, by, bw, bh, lx, ly, s }) => {

@@ -43,4 +43,8 @@ To add one: start from `wraps/template.png` (104 × 60 px; the red box at x 42�
 
 ## Ecosystem murals
 
-Elexium, Linx and Aura are painted on their own buildings in the skyline (`murals/`, list in `MURALS` in `index.html`). Clicking a mural opens the app in a new tab.
+Elexium, Powfi, Linx and Aura are painted on their own buildings in the skyline (`murals/`, list in `MURALS` in `index.html`). Clicking a mural opens the app in a new tab.
+
+## Support
+
+The 💜 Donate button in the header shows the ALPH tip address with a copy button.
