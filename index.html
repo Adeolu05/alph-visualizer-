@@ -199,8 +199,9 @@ function layout() {
 addEventListener('resize', layout); layout();
 
 // ---- time of day (viewer's local clock) ----
+const skyOverride = { day: 12, dusk: 18, night: 23 }[new URLSearchParams(location.search).get('sky')];   // ?sky=day|dusk|night
 function skyPalette() {
-  const h = new Date().getHours() + new Date().getMinutes() / 60;
+  const h = skyOverride ?? new Date().getHours() + new Date().getMinutes() / 60;
   if (h >= 7 && h < 17) return { top: '#2f6fd1', bot: '#9fd0ff', day: 1 };
   if (h >= 5 && h < 7) return { top: '#2a1f5c', bot: '#ff9a6b', day: 0.5 };
   if (h >= 17 && h < 20) return { top: '#24184f', bot: '#ff7a59', day: 0.5 };
@@ -279,10 +280,15 @@ function drawPerson(p, row, t) {
   }
   if (p === hovered) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(x - 3 * s, y - 12 * s, 6 * s, 12.5 * s); }
   if (p.whale && p.state === 'wait') {
-    ctx.fillStyle = '#ffd25d'; ctx.font = `bold ${Math.round(3.2 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center';
-    ctx.fillText(`🐋 ${fmt(p.alph)}${alphUsd ? ' · ' + usd(p.alph) : ''}`, x, y - 15 * s);
+    // one tag per free spot on the platform, so a crowd of whales doesn't pile its labels on top of each other
+    ctx.font = `bold ${Math.round(3.2 * u)}px ui-monospace,monospace`; ctx.textAlign = 'center';
+    const text = `🐋 ${fmt(p.alph)}${alphUsd ? ' · ' + usd(p.alph) : ''}`, half = ctx.measureText(text).width / 2 + 6;
+    if (p !== hovered && whaleTags.some(([a, b]) => x + half > a && x - half < b)) return;
+    whaleTags.push([x - half, x + half]);
+    ctx.fillStyle = '#ffd25d'; ctx.fillText(text, x, y - 15 * s);
   }
 }
+let whaleTags = [];   // label spans already drawn on the current platform this frame
 
 // ---- pigeons: peck about, flap off when a train comes in ----
 const pigeons = [...Array(G)].map(() => [...Array(1 + rnd(3))].map(() => ({ x: Math.random() * 0.9, fly: 0, phase: Math.random() * 9 })));
@@ -490,16 +496,42 @@ function muralRects() {
   s = Math.max(22, Math.min(s, Math.floor((rowRight - rowLeft + gap) / n) - 18 - gap));
   const step = s + 18 + gap, total = n * step - gap;
   const x0 = Math.max(rowLeft, Math.min(W / 2 - total / 2, rowRight - total));
-  const ly = Math.round(signTop - 12 - s);
+  // each app gets its own tower, Times Square style: varied heights, the logo is a billboard high on the facade
+  const header = document.querySelector('header')?.getBoundingClientRect();
+  const sky0 = (header && header.height ? header.bottom : 0) + s * 0.24 + 12;   // keep the roof labels clear of the header
+  const base = signTop - 12 - s, rise = Math.max(0, Math.min(s * 0.9, base - sky0));
   return MURALS.map((m, i) => {
-    const bx = Math.round(x0 + i * step), bw = s + 18, by = ly - Math.round(s * 0.55) - 8;
+    const bx = Math.round(x0 + i * step), bw = s + 18;
+    const ly = Math.round(base - rise * [0.55, 1, 0.3, 0.8, 0.1][i % 5]), by = ly - 8;
     return { m, bx, by, bw, bh: top - by, lx: bx + 9, ly, s };
   });
 }
+// glass panes on a building face: lit windows at night, sky reflections by day, a mix at dusk
+function drawWindows(x, y, w, h, wins, day, seed) {
+  if (day > 0) {
+    ctx.globalAlpha = day === 1 ? 0.85 : 0.45;
+    for (let wy = 8; wy < h - 8; wy += 10) for (let wx = 6; wx < w - 6; wx += 9) {
+      const r = (Math.sin((wx * 7 + wy * 13 + seed) * 12.9898) + 1) / 2;   // stable per pane
+      ctx.fillStyle = r > 0.8 ? '#cfe6ff' : r > 0.35 ? '#8fb6e8' : '#6d93c9'; ctx.fillRect(x + wx, y + wy, 4, 5);
+      if (r > 0.8) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + wx, y + wy, 1, 3); }   // glint
+    }
+  }
+  if (day < 1) wins.forEach(([wx, wy, s]) => {
+    if (wy >= h - 8) return;
+    ctx.fillStyle = s > 0.85 ? '#a08bff' : '#ffd98a'; ctx.globalAlpha = (0.5 + 0.3 * s) * (1 - day * 0.6); ctx.fillRect(x + wx, y + wy, 4, 5);
+  });
+  ctx.globalAlpha = 1;
+}
 function drawMurals(t, pal) {
-  muralRects().forEach(({ m, bx, by, bw, bh, lx, ly, s }) => {
-    ctx.fillStyle = pal.day === 1 ? '#34426a' : '#10132a'; ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = pal.day === 1 ? '#2b3760' : '#0a0c1c'; ctx.fillRect(bx, by, bw, 3);               // roof ledge
+  muralRects().forEach(({ m, bx, by, bw, bh, lx, ly, s }, i) => {
+    ctx.fillStyle = pal.day === 1 ? '#4a5b91' : '#171c3d'; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = pal.day === 1 ? '#2b3760' : '#0a0c1c'; ctx.fillRect(bx + bw - 3, by, 3, bh);    // shaded side
+    if (!m.wins) { m.wins = []; for (let wy = 8; wy < 400; wy += 10) for (let wx = 6; wx < 200; wx += 9) if (Math.random() < 0.3) m.wins.push([wx, wy, Math.random()]); }
+    const below = ly + s + 6;                                                                          // facade under the billboard
+    drawWindows(bx, below - 8, bw, top - below + 8, m.wins.filter(([wx]) => wx < bw - 6), pal.day, i * 31);
+    ctx.fillStyle = pal.day === 1 ? '#2b3760' : '#0a0c1c'; ctx.fillRect(bx - 2, by, bw + 4, 3);       // roof ledge
+    ctx.fillRect(bx + bw - 9, by - 7, 2, 7);                                                           // antenna
+    ctx.fillStyle = Math.sin(t / 500 + i) > 0 ? '#ff3b3b' : '#5a1a1a'; ctx.fillRect(bx + bw - 9, by - 9, 2, 2);
     const lit = m === hoveredMural, glow = (lit ? 22 : 12) + Math.sin(t / 700 + bx) * 3;
     ctx.save(); ctx.shadowColor = m.color; ctx.shadowBlur = glow;
     ctx.fillStyle = m.color; ctx.fillRect(lx - 2, ly - 2, s + 4, s + 4);                               // neon frame
@@ -507,7 +539,7 @@ function drawMurals(t, pal) {
     if (m.image?.complete && m.image.naturalWidth) ctx.drawImage(m.image, lx, ly, s, s);
     ctx.font = `bold ${Math.max(8, Math.round(s * 0.24))}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.save(); ctx.shadowColor = m.color; ctx.shadowBlur = 8; ctx.fillStyle = '#fff';
-    ctx.fillText((m.label || m.name.toUpperCase()) + (lit ? ' ↗' : ''), bx + bw / 2, ly - 5); ctx.restore();
+    ctx.fillText((m.label || m.name.toUpperCase()) + (lit ? ' ↗' : ''), bx + bw / 2, by - 3); ctx.restore();   // rooftop sign
   });
 }
 let hoveredMural = null;
@@ -547,8 +579,7 @@ function drawSky(t) {
   skyline.forEach(b => {
     const by = top - b.h;
     ctx.fillStyle = pal.day === 1 ? '#3b4a73' : '#0d0f1f'; ctx.fillRect(b.x, by, b.w, b.h);
-    if (pal.day < 1) b.wins.forEach(([wx, wy, s]) => { ctx.fillStyle = s > 0.85 ? '#a08bff' : '#ffd98a'; ctx.globalAlpha = 0.5 + 0.3 * s; ctx.fillRect(b.x + wx, by + wy, 4, 5); });
-    ctx.globalAlpha = 1;
+    drawWindows(b.x, by, b.w, b.h, b.wins, pal.day, b.x);
   });
   drawMurals(t, pal);
   [0.3, 0.36].forEach((k, i) => { // Proof-of-Less-Work wind turbines
@@ -867,7 +898,7 @@ function frame(now) {
   rows.forEach((row, i) => {
     drawPlatform(row, i, now);
     drawPigeons(i, row, now);
-    people.filter(p => p.f === i).forEach(p => drawPerson(p, row, now));
+    whaleTags = []; people.filter(p => p.f === i).forEach(p => drawPerson(p, row, now));
     if (platforms[i].train) drawTrain(platforms[i].train, row, now);
   });
   for (let i = particles.length - 1; i >= 0; i--) {

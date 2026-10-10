@@ -27,7 +27,7 @@ The stream lacks enriched sender addresses, so address watches match output addr
 
 The public explorer API `https://backend.mainnet.alephium.org` is used for targeted confirmation recovery in all views and user-triggered transaction/address searches in the station view. CoinGecko price updates still poll every 60s.
 
-The WebSocket reconnects automatically with exponential backoff, detects stalled streams, and falls back to a clearly labeled simulated demo after 15s without a working feed. A valid block or pending transaction restores live mode, clears demo traffic, and restores known waiting transactions. Force simulation with `?demo` (no WebSocket, mempool, or confirmation requests).
+The WebSocket reconnects automatically with exponential backoff, detects stalled streams, and falls back to a clearly labeled simulated demo after 15s without a working feed. A valid block or pending transaction restores live mode, clears demo traffic, and restores known waiting transactions. Force simulation with `?demo` (no WebSocket, mempool, or confirmation requests). Preview the sky at any hour with `?sky=day`, `?sky=dusk` or `?sky=night`.
 
 Run the feed and view integration checks with `node --test tests/live-feed.test.cjs` (no dependencies required).
 
@@ -43,7 +43,7 @@ To add one: start from `wraps/template.png` (104 × 60 px; the red box at x 42�
 
 ## Ecosystem murals
 
-Elexium, Powfi, Linx, Aura and AlphScoundrel are painted on a row of buildings behind the neon sign (`murals/`, list in `MURALS` in `index.html`). Clicking a mural opens the app in a new tab. On phones they are listed under the 🏙 Apps button instead.
+Elexium, Powfi, Linx, Aura and AlphScoundrel each have their own tower behind the neon sign, with the logo as a billboard on the facade (`murals/`, list in `MURALS` in `index.html`). Clicking a mural opens the app in a new tab. On phones they are listed under the 🏙 Apps button instead.
 
 ## Support
 
