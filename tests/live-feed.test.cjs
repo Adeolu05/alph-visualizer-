@@ -543,3 +543,26 @@ test('index.html: the Aura ticker shows real market questions and odds, and neve
   assert.equal(h.run('auraTickerText([])'), null);
   assert.equal(h.run('auraTickerText(undefined)'), null);
 });
+
+test('index.html: miner-only blocks run through as expresses; blocks with passengers stop', async () => {
+  const h = harness(); h.load('index.html');
+  const ws = h.sockets[0]; ws.open();
+  ws.message(notification(block(1, [coinbase])));
+  ws.message(notification(block(2, [pendingTx(), coinbase])));
+  await h.tick(700);
+  assert.equal(h.run('departures.find(d => d.h === 1).express'), true);
+  assert.equal(h.run('departures.find(d => d.h === 2).express'), false);
+  assert.equal(h.run('departures.find(d => d.h === 2).pax'), 1);
+  const rows = h.elements.get('rows').innerHTML;
+  assert.match(rows, /class="express"[^]*⛏ express/);
+  assert.match(rows, /1 pax/);
+  // the express is first in line and never dwells; the passenger train arrives and stops
+  assert.equal(h.run('[platforms[1].train, ...platforms[1].queue].filter(Boolean).map(t => t.h + ":" + t.state).join(" ")'), '1:pass 2:in');
+});
+
+test('index.html: the pulse line counts real passengers and expresses in the last minute', () => {
+  const h = harness(); h.load('index.html');
+  assert.equal(h.run('pulseText([])'), '');
+  assert.equal(h.run('pulseText([{ pax: 0 }, { pax: 0 }, { pax: 1 }])'), 'Quiet · 1 pax/min · 2 express/min');
+  assert.equal(h.run('pulseText([{ pax: 200 }, { pax: 0 }])'), 'Rush hour · 200 pax/min · 1 express/min');
+});
