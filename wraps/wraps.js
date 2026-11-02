@@ -69,7 +69,7 @@ globalThis.WRAPS = [
     panels: ['wang-1.png', 'wang-2.png'],
     credit: 'the WANG community',
     link: 'https://x.com/ChengisWang',
-    weight: 1,
+    weight: 3,
     active: { from: '2026-11-01', to: null },
   },
 ];
