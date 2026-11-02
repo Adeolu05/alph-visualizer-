@@ -529,3 +529,17 @@ test('WebSocket disconnect does not abort an in-flight backend confirmation', as
   resolve(response(accepted(pendingTx(), true))); await h.tick(0);
   assert.equal(h.run('confirmed.length'), 1);
 });
+
+test('index.html: the Aura ticker shows real market questions and odds, and never invents any', () => {
+  const h = harness(); h.load('index.html');
+  assert.match(h.run('auraTicker'), /coming to mainnet/);
+  assert.equal(h.run('auraLive'), false);
+  h.context.mk = [
+    { id: 1, question: 'Will ALPH  close above $1\nin 2027?', bestBidYes: '610', bestAskYes: '630' },
+    { id: 2, question: 'No book yet', bestBidYes: null, bestAskYes: null },
+    { id: 3 },
+  ];
+  assert.equal(h.run('auraTickerText(mk)'), 'Will ALPH close above $1 in 2027? YES 62% · No book yet · ');
+  assert.equal(h.run('auraTickerText([])'), null);
+  assert.equal(h.run('auraTickerText(undefined)'), null);
+});

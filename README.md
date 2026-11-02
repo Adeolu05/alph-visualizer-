@@ -44,7 +44,7 @@ To add one: start from `wraps/template.png` (104 × 60 px; the red box at x 42�
 
 ## Ecosystem murals
 
-Elexium, Powfi, Linx, Aura and AlphScoundrel each have their own tower behind the neon sign, with the logo as a billboard on the facade (`murals/`, list in `MURALS` in `index.html`). Clicking a mural opens the app in a new tab. On phones they are listed under the 🏙 Apps button instead.
+Elexium, Powfi, Linx, Aura and AlphScoundrel each have their own tower behind the neon sign, with the logo as a billboard on the facade. Aura's tower is a wide digital billboard: it scrolls Aura's busiest open markets with their YES odds from Aura's public API (`api.aura.markets/v1/markets`, no key), refreshed every 2 minutes, and says "SOON" with a coming-to-mainnet message whenever the API can't be reached (`murals/`, list in `MURALS` in `index.html`). Clicking a mural opens the app in a new tab. On phones they are listed under the 🏙 Apps button instead.
 
 ## Support
 

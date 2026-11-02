@@ -549,7 +549,7 @@ const MURALS = [
   { name: 'Elexium', url: 'https://elexium.finance/', img: 'murals/elexium.png', x: 0.205, color: '#e9dcc0' },
   { name: 'Powfi', url: 'https://powfi.alephium.org/', img: 'murals/powfi.png', x: 0, color: '#ff6a3d' },
   { name: 'Linx', url: 'https://linxlabs.org/', img: 'murals/linx.png', x: 0.645, color: '#b07cff' },
-  { name: 'Aura', url: 'https://aura.markets/', img: 'murals/aura.png', x: 0.725, color: '#8f6bff' },
+  { name: 'Aura', url: 'https://aura.markets/', img: 'murals/aura.png', x: 0.725, color: '#8f6bff', screen: 3.6 },   // a wide digital billboard: logo + live markets
   { name: 'AlphScoundrel', label: 'SCOUNDREL', url: 'https://alphscoundrel.alehpium.org/', img: 'murals/alphscoundrel.png', x: 0, color: '#e8443a' },
 ];
 if (typeof Image !== 'undefined') MURALS.forEach(m => { m.image = new Image(); m.image.src = m.img; });
@@ -564,15 +564,17 @@ function muralRects() {
   const rowLeft = Math.max(W * 0.36 + 24, net && net.width ? net.right + 14 : 0);   // clear of the turbines and panel
   const band = signTop - 12 - s * 1.5;
   const rowRight = board && board.width && board.bottom > band ? board.left - 10 : W - 12;
-  s = Math.max(22, Math.min(s, Math.floor((rowRight - rowLeft + gap) / n) - 18 - gap));
-  const step = s + 18 + gap, total = n * step - gap;
+  const units = MURALS.reduce((u, m) => u + (m.screen || 1), 0);                      // a wide screen counts as several logos
+  s = Math.max(22, Math.min(s, Math.floor((rowRight - rowLeft + gap - n * (18 + gap)) / units)));
+  const widths = MURALS.map(m => Math.round(s * (m.screen || 1)) + 18), total = widths.reduce((a, b) => a + b + gap, -gap);
   const x0 = Math.max(rowLeft, Math.min(W / 2 - total / 2, rowRight - total));
   // each app gets its own tower, Times Square style: varied heights, the logo is a billboard high on the facade
   const header = document.querySelector('header')?.getBoundingClientRect();
   const sky0 = (header && header.height ? header.bottom : 0) + s * 0.24 + 12;   // keep the roof labels clear of the header
   const base = signTop - 12 - s, rise = Math.max(0, Math.min(s * 0.9, base - sky0));
+  let x = x0;
   return MURALS.map((m, i) => {
-    const bx = Math.round(x0 + i * step), bw = s + 18;
+    const bx = Math.round(x), bw = widths[i]; x += bw + gap;
     const ly = Math.round(base - rise * [0.55, 1, 0.3, 0.8, 0.1][i % 5]), by = ly - 8;
     return { m, bx, by, bw, bh: top - by, lx: bx + 9, ly, s };
   });
@@ -605,9 +607,10 @@ function drawMurals(t, pal) {
     ctx.fillStyle = Math.sin(t / 500 + i) > 0 ? '#ff3b3b' : '#5a1a1a'; ctx.fillRect(bx + bw - 9, by - 9, 2, 2);
     const lit = m === hoveredMural, glow = (lit ? 22 : 12) + Math.sin(t / 700 + bx) * 3;
     ctx.save(); ctx.shadowColor = m.color; ctx.shadowBlur = glow;
-    ctx.fillStyle = m.color; ctx.fillRect(lx - 2, ly - 2, s + 4, s + 4);                               // neon frame
+    ctx.fillStyle = m.color; ctx.fillRect(lx - 2, ly - 2, bw - 14, s + 4);                             // neon frame
     ctx.restore();
     if (m.image?.complete && m.image.naturalWidth) ctx.drawImage(m.image, lx, ly, s, s);
+    if (m.screen) drawScreen(lx + s + 2, ly, bw - 18 - s - 2, s, m.color, t);
     ctx.font = `bold ${Math.max(8, Math.round(s * 0.24))}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
     ctx.save(); ctx.shadowColor = m.color; ctx.shadowBlur = 8; ctx.fillStyle = '#fff';
     ctx.fillText((m.label || m.name.toUpperCase()) + (lit ? ' ↗' : ''), bx + bw / 2, by - 3); ctx.restore();   // rooftop sign
@@ -629,6 +632,46 @@ let hoveredMural = null;
 function muralAt(cx, cy) {
   const hit = muralRects().find(r => cx >= r.bx && cx <= r.bx + r.bw && cy >= r.ly - r.s * 0.4 && cy <= r.ly + r.s + 4);
   return hit ? hit.m : null;
+}
+
+// ---- Aura's tower: a digital billboard of its busiest open markets (Aura's public API, no key) ----
+// Until Aura is live on mainnet (or if the API can't be reached from the browser) it says so instead of inventing markets.
+const AURA_MARKETS = 'https://api.aura.markets/v1/markets?limit=6&status=open&sort=volume&order=desc&fields=id,question,bestBidYes,bestAskYes';
+let auraTicker = 'Prediction markets on Alephium · coming to mainnet · ', auraLive = false;
+// prices are integer ticks of 0.001 (0 = No, 1000 = Yes); the YES chance is the bid/ask midpoint
+function auraTickerText(markets) {
+  const items = (markets || []).filter(m => typeof m?.question === 'string' && m.question.trim()).slice(0, 6).map(m => {
+    const b = Number(m.bestBidYes), a = Number(m.bestAskYes);
+    const yes = Number.isFinite(b) && Number.isFinite(a) && a > 0 ? Math.round((b + a) / 20) : null;
+    return m.question.trim().replace(/\s+/g, ' ').slice(0, 90) + (yes == null ? '' : ` YES ${yes}%`);
+  });
+  return items.length ? items.join(' · ') + ' · ' : null;
+}
+async function loadAuraMarkets() {
+  if (forceDemo || innerWidth < 700) return;           // phones don't show the towers
+  try {
+    const r = await fetch(AURA_MARKETS, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    if (!r.ok || !/json/.test(r.headers.get('content-type') || '')) return;
+    const text = auraTickerText((await r.json()).markets);
+    if (text) { auraTicker = text; auraLive = true; }
+  } catch {}                                            // not live yet / blocked: keep the current text
+}
+function drawScreen(x, y, w, h, color, t) {
+  ctx.save();
+  ctx.fillStyle = '#07060f'; ctx.fillRect(x, y, w, h);
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const pad = Math.max(3, Math.round(h * 0.1)), small = Math.max(7, Math.round(h * 0.19)), big = Math.max(9, Math.round(h * 0.3));
+  ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+  ctx.font = `bold ${small}px ui-monospace,monospace`; ctx.fillStyle = '#b9a6ff'; ctx.fillText('MARKETS', x + pad, y + pad);
+  ctx.fillStyle = auraLive ? '#5dffa8' : '#ffd25d'; ctx.textAlign = 'right';                       // honest status light
+  ctx.fillText(auraLive ? '● LIVE' : 'SOON', x + w - pad, y + pad);
+  ctx.textAlign = 'left'; ctx.font = `bold ${big}px ui-monospace,monospace`; ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(auraTicker).width, off = (t / 22) % tw, ty = y + h * 0.66;
+  ctx.shadowColor = color; ctx.shadowBlur = 5; ctx.fillStyle = '#f1ecff';
+  for (let k = 0; k < Math.ceil(w / tw) + 2; k++) ctx.fillText(auraTicker, x + pad - off + k * tw, ty);
+  ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(7,6,15,.3)';                                           // LED rows
+  for (let ry = y + 1; ry < y + h; ry += 2) ctx.fillRect(x, ry, w, 1);
+  ctx.restore();
 }
 
 function drawSky(t) {
@@ -949,6 +992,7 @@ async function pollPrice() {
   } catch { if (!alphUsd) priceEl.textContent = 'ALPH $ –'; }
 }
 pollPrice(); setInterval(pollPrice, 60000);
+loadAuraMarkets(); setInterval(loadAuraMarkets, 120000);
 
 // ---- main loop ----
 let prev = performance.now();

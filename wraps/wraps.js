@@ -72,4 +72,14 @@ globalThis.WRAPS = [
     weight: 3,
     active: { from: '2026-11-01', to: null },
   },
+  {
+    // Aura (prediction markets on Alephium), logo from the Aura skyline tower
+    id: 'aura',
+    type: 'art',
+    panels: ['aura-1.png', 'aura-2.png'],
+    credit: 'the Aura community',
+    link: 'https://x.com/AuraMarkets',
+    weight: 2,
+    active: { from: '2026-11-01', to: null },
+  },
 ];
