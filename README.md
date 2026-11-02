@@ -4,7 +4,7 @@ Alephium, live, as a pixel-art train station. Open `index.html` (station) or `ma
 
 - 4 platforms = Alephium's 4 groups; a train's destination = the block's `chainTo` (16 routes)
 - Every block is a train; every transaction is a passenger who boards it
-- Most blocks carry only the miner: those run through as non-stop ⛏ expresses (miner in the cab, dimmed on the departures board), so the trains that stop and glow at the platform are the ones with real passengers. A pulse line on the board shows the last minute, e.g. `Quiet · 8 pax/min · 61 express/min`
+- Most blocks carry only the miner: those are ⛏ expresses that call for 1.5s with the doors shut (miner in the cab, dimmed on the departures board) and skip the call when another train is waiting, so the station keeps up with the chain. Trains with real passengers open their doors and the platform edge glows while they board. A pulse line on the board shows the last minute, e.g. `Quiet · 8 pax/min · 61 express/min`
 - Live passengers are real transactions: they appear from the mempool, and the exact ones in a block board that train. Click one to see its tx and open it in the explorer
 - 🐋 Whales (≥10,000 ALPH in outputs, including change), token carriers (green bag), contract callers (juggling gears), ⛏ a miner in the cab of every train (the block's coinbase/mining-reward tx; click a train to see the reward), miner-only expresses for blocks with no user txs, gold rush-hour trains for 25+ txs
 - Live ALPH price (CoinGecko, polled every 60s) with 24h change; dollar values on passengers, trains, whales, search results and the outputs/min stat

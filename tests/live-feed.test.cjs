@@ -556,8 +556,16 @@ test('index.html: miner-only blocks run through as expresses; blocks with passen
   const rows = h.elements.get('rows').innerHTML;
   assert.match(rows, /class="express"[^]*⛏ express/);
   assert.match(rows, /1 pax/);
-  // the express is first in line and never dwells; the passenger train arrives and stops
-  assert.equal(h.run('[platforms[1].train, ...platforms[1].queue].filter(Boolean).map(t => t.h + ":" + t.state).join(" ")'), '1:pass 2:in');
+  // a passenger train is waiting behind it, so the express keeps going (no pause) and never opens up to board
+  const trip = h => `(() => { const s = []; for (let i = 0; i < 80; i++) { stepTrains(100); const t = platforms[1].train;
+    if (t && t.h === ${h} && s[s.length - 1] !== t.state) s.push(t.state); if (s.length && (!t || t.h !== ${h})) break; } return s.join(' '); })()`;
+  assert.equal(h.run(trip(1)), 'in out');
+  assert.equal(h.run(trip(2)), 'in dwell out');                             // then the passenger train arrives and stops, doors open
+  assert.equal(h.run('people.filter(p => p.miner && p.miner.h === 1).length'), 0);   // nobody jogged to catch the express
+  // an express on a clear platform pulls in, waits a moment with the doors shut, and pulls out
+  ws.message(notification(block(3, [coinbase])));
+  await h.tick(700);
+  assert.equal(h.run(trip(3)), 'in halt out');
 });
 
 test('index.html: the pulse line counts real passengers and expresses in the last minute', () => {
