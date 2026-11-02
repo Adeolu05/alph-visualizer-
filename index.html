@@ -75,6 +75,76 @@
   #appsList small { display:block; color:var(--dim); font-size:11px; }
   @media (max-width:700px) { #appsBtn { display:inline-block; } }
   #tip a { color:#5dd6ff; } #tip .x { float:right; cursor:pointer; color:var(--dim); margin-left:8px; }
+  /* 🎫 transaction ticket (ticket.js): "Night Pass", a boarding pass that lives in the station */
+  #ticket { position:fixed; inset:0; z-index:8; background:rgba(5,6,13,.72); display:flex; align-items:center; justify-content:center; padding:16px; }
+  #ticket[hidden] { display:none; }
+  .tk-card { --c:#a08bff; --tk-ink:#f0ede6; --tk-mute:#a5a2b8; --tk-dim:#5d5a72; --tk-line:rgba(240,237,230,.12); --tk-line2:rgba(240,237,230,.3);
+    position:relative; width:min(420px,100%); max-height:calc(100vh - 32px); overflow:auto; background:#0d0e1c; color:var(--tk-ink);
+    border:1px solid var(--tk-line); border-radius:14px; font-size:13px; line-height:1.5; box-shadow:0 18px 60px rgba(0,0,0,.65); }
+  .tk-card::before { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:var(--c); z-index:1; }
+  .tk-card ::selection { background:var(--c); color:#05060d; }
+  .tk-top { display:flex; justify-content:space-between; align-items:center; padding:12px 16px 12px 22px; border-bottom:1px solid var(--tk-line);
+    font-size:10px; letter-spacing:.2em; color:var(--tk-mute); text-transform:uppercase; }
+  .tk-top b { color:var(--tk-ink); letter-spacing:.14em; }
+  .tk-x { border:0; background:none; font:inherit; font-size:15px; letter-spacing:0; cursor:pointer; color:var(--tk-mute); margin-left:10px; padding:0 2px; }
+  .tk-x:hover { color:var(--tk-ink); }
+  /* pixel scene: the one moving picture */
+  .tk-scene { position:relative; height:70px; background:linear-gradient(#121331, #0a0b18); border-bottom:1px solid var(--tk-line); overflow:hidden; }
+  .tk-scene .rail { position:absolute; left:0; right:0; bottom:14px; height:2px; background:#ffd25d; box-shadow:0 0 8px rgba(255,210,93,.55); }
+  .tk-scene .sleepers { position:absolute; left:0; right:0; bottom:6px; height:3px; background:repeating-linear-gradient(90deg,#3a3f5c 0 10px, transparent 10px 18px); }
+  .tk-train { position:absolute; bottom:17px; right:16px; display:flex; gap:3px; }
+  .tk-car { width:56px; height:25px; background:#e9ecf5; border-radius:3px; position:relative; }
+  .tk-car:first-child { border-radius:12px 3px 3px 3px; }
+  .tk-car::before { content:''; position:absolute; left:8px; right:8px; top:5px; height:7px; background:repeating-linear-gradient(90deg,#fff3b8 0 9px, transparent 9px 14px); }
+  .tk-car::after { content:''; position:absolute; left:0; right:0; bottom:5px; height:3px; background:var(--stripe, var(--c)); }
+  .tk-pax { position:absolute; bottom:17px; left:26%; width:6px; height:14px; background:var(--stripe, var(--c)); }
+  .tk-pax::before { content:''; position:absolute; top:-6px; left:0; width:6px; height:6px; background:#f1c27d; }
+  .tk-pax::after { content:'▼'; position:absolute; top:-21px; left:-3px; color:#5dffa8; font-size:11px; }
+  .tk-body { padding:16px 16px 14px 22px; }
+  .tk-lbl { font-size:10px; letter-spacing:.18em; color:var(--tk-mute); text-transform:uppercase; }
+  .tk-route { display:flex; align-items:baseline; gap:10px; margin:5px 0 2px; font-weight:800; font-size:26px; letter-spacing:-.02em; line-height:1.05; }
+  .tk-route .p { color:var(--c); } .tk-route .arr { color:var(--tk-dim); font-weight:400; }
+  .tk-sub { color:var(--tk-mute); font-size:12px; }
+  .tk-sub i, .tk-why summary { font-style:normal; color:var(--tk-ink); border:1px solid var(--tk-line2); border-radius:3px; padding:0 5px; margin-left:6px; font-size:10px; letter-spacing:.12em; }
+  .tk-why { display:inline; }
+  .tk-why summary { display:inline; cursor:pointer; list-style:none; }
+  .tk-why summary::-webkit-details-marker { display:none; }
+  .tk-why summary span { display:inline-block; width:13px; height:13px; line-height:13px; text-align:center; margin-left:4px; border-radius:50%; background:var(--tk-line2); font-size:9px; letter-spacing:0; }
+  .tk-why summary:hover, .tk-why[open] summary { border-color:var(--c); color:var(--c); }
+  .tk-why p { margin:8px 0 0; padding:8px 10px; border-left:2px solid var(--c); background:rgba(240,237,230,.04); color:var(--tk-mute); font-size:12px; }
+  .tk-journey { display:grid; grid-template-columns:repeat(3,1fr); margin:14px 0 12px; border-top:1px solid var(--tk-line); border-bottom:1px solid var(--tk-line); }
+  .tk-step { padding:9px 8px 9px 0; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--tk-dim); }
+  .tk-step + .tk-step { padding-left:10px; border-left:1px solid var(--tk-line); }
+  .tk-step .sq { display:inline-block; width:8px; height:8px; background:currentColor; margin-right:6px; }
+  .tk-step b { display:block; margin-top:3px; font-size:12px; letter-spacing:0; text-transform:none; font-weight:600; color:var(--tk-dim); }
+  .tk-step.done { color:var(--tk-mute); } .tk-step.done b, .tk-step.now b { color:var(--tk-ink); }
+  .tk-step.now { color:#ffd25d; } .tk-step.ok { color:#5dffa8; } .tk-step.ok b { color:#5dffa8; } .tk-step.bad, .tk-step.bad b { color:#ff7a7a; }
+  .tk-story { margin:0; }
+  .tk-grid { display:grid; grid-template-columns:1fr 1fr; margin:12px 0; border-top:1px solid var(--tk-line); }
+  .tk-cell { padding:8px 0; border-bottom:1px solid var(--tk-line); min-width:0; }
+  .tk-cell:nth-child(even) { padding-left:12px; border-left:1px solid var(--tk-line); }
+  .tk-cell .v { font-weight:600; font-variant-numeric:tabular-nums; margin-top:2px; overflow-wrap:anywhere; }
+  .tk-cell .v small { color:var(--tk-mute); font-weight:400; font-size:12px; }
+  .tk-cell.big .v { font-size:20px; font-weight:800; letter-spacing:-.01em; }
+  .tk-code { display:flex; gap:1px; height:20px; margin:2px 0 14px; opacity:.5; overflow:hidden; }
+  .tk-code span { background:var(--tk-ink); flex:none; }
+  .tk-actions { display:grid; grid-template-columns:1.6fr 1fr .8fr 1fr; gap:6px; }
+  .tk-actions button, .tk-actions a { font:600 12px inherit; font-family:inherit; padding:9px 6px; border-radius:6px; border:1px solid var(--tk-line2);
+    background:none; color:var(--tk-ink); text-decoration:none; cursor:pointer; text-align:center; white-space:nowrap; }
+  @media (max-width:400px) { .tk-actions { grid-template-columns:1fr 1fr; } }
+  .tk-actions button:hover, .tk-actions a:hover { border-color:var(--tk-ink); }
+  .tk-actions .fill { background:var(--c); border-color:var(--c); color:#05060d; }
+  .tk-actions .fill:hover { border-color:var(--c); filter:brightness(1.1); }
+  .tk-card :focus-visible { outline:1px solid var(--c); outline-offset:2px; }
+  .tk-empty { color:var(--tk-mute); margin:4px 0 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    #ticket:not([hidden]) .tk-card { animation: tk-rise .5s cubic-bezier(.2,.7,.2,1) both; }
+    .tk-step.now .sq { animation: tk-blink 1s steps(2) infinite; }
+    .tk-pax { animation: tk-bob 1.6s steps(2) infinite; }
+  }
+  @keyframes tk-rise { from { opacity:0; transform:translateY(14px) } }
+  @keyframes tk-blink { 50% { opacity:.15 } }
+  @keyframes tk-bob { 50% { transform:translateY(-1px) } }
   .network-health { position:fixed; left:16px; z-index:3; width:265px; max-width:calc(100% - 32px); background:var(--panel); border:1px solid var(--line); border-radius:8px; font-size:11px; }
   .network-health summary { cursor:pointer; padding:7px 10px; color:#c3c9e8; }
   .network-health.connected summary { color:#5dffa8; } .network-health.reconnecting summary { color:#ffd25d; }
@@ -143,6 +213,7 @@
   <div class="stat"><b id="sLast">–</b><span>last train</span></div>
 </div>
 <div id="tip"></div>
+<div id="ticket" hidden role="dialog" aria-label="Transaction ticket"><div class="tk-card"></div></div>
 <div id="apps" hidden><span class="x" id="appsClose">✕</span><b>🏙 Alephium apps</b><div id="appsList"></div></div>
 <div id="donate" hidden>
   <span class="x" id="donateClose">✕</span>
@@ -650,7 +721,7 @@ function chime(f) {
 // ---- inspect & search ----
 const tip = document.getElementById('tip');
 function showTip(p, cx, cy) {
-  const link = p.hash ? `<br><a href="${EXPLORER}/transactions/${p.hash}" target="_blank" rel="noopener">open in explorer ↗</a>` : '';
+  const link = p.hash ? `<br><a href="?ticket=${p.hash}" data-ticket="${p.hash}">🎫 ticket</a> · <a href="${EXPLORER}/transactions/${p.hash}" target="_blank" rel="noopener">open in explorer ↗</a>` : '';
   tip.innerHTML = `<span class="x">✕</span><b style="color:${COLORS[p.to]}">${p.miner ? '⛏ Miner (block reward)' : p.whale ? '🐋 Large outputs' : p.contract ? '⚙️ Contract call' : 'Passenger'}</b><br>
     ${p.hash ? 'tx ' + short(p.hash) + '<br>' : '<i>Demo passenger. On live mainnet this links to the real transaction.</i><br>'}
     ${p.hash ? `<span style="color:${p.status === 'failed' ? '#ff7a7a' : p.status === 'succeeded' ? '#5dffa8' : '#ffd25d'}">${transactionStatusLabel(p.status)}</span><br>` : ''}
@@ -757,7 +828,7 @@ async function lookup(q, seq) {
       if (seq !== findSeq) return;
       const pending = tx.type === 'Pending' || tx.type === 'PendingTransaction' || !tx.blockHash;
       showPanel(`<b>Transaction ${short(q)}</b><br>${pending ? '⏳ Waiting on the platform. Look for the green arrow!' : `✅ Already departed ${ago(tx.timestamp)} in block ${short(tx.blockHash)}`}
-        <br><a href="${EXPLORER}/transactions/${q}" target="_blank" rel="noopener">open in explorer ↗</a>`);
+        <br><a href="?ticket=${q}" data-ticket="${q}">🎫 Get your ticket</a> · <a href="${EXPLORER}/transactions/${q}" target="_blank" rel="noopener">open in explorer ↗</a>`);
     }
   } catch (e) {
     if (seq !== findSeq) return;
@@ -930,5 +1001,6 @@ setInterval(() => {
   document.getElementById('clock').textContent = new Date().toTimeString().slice(0, 8);
 }, 250);
 </script>
+<script src="ticket.js"></script>
 </body>
 </html>

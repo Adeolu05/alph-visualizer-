@@ -9,7 +9,7 @@ let server, browser, base;
 before(async () => {
   server = http.createServer(async (req, res) => {
     const file = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
-    if (!['index.html', 'map.html', 'yard.html', 'yard.js', 'yard.css', 'live-feed.js', 'favicon.js', 'favicon.svg', 'wraps/wraps.js', 'og.png', 'og-map.png'].includes(file)) { res.writeHead(404).end(); return; }
+    if (!['index.html', 'map.html', 'yard.html', 'yard.js', 'yard.css', 'live-feed.js', 'ticket.js', 'favicon.js', 'favicon.svg', 'wraps/wraps.js', 'og.png', 'og-map.png'].includes(file)) { res.writeHead(404).end(); return; }
     const type = file.endsWith('.html') ? 'text/html' : file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
     res.writeHead(200, { 'Content-Type': type }); res.end(await fs.readFile(path.join(root, file)));
   });

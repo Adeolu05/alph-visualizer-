@@ -9,6 +9,7 @@ Alephium, live, as a pixel-art train station. Open `index.html` (station) or `ma
 - Live ALPH price (CoinGecko, polled every 60s) with 24h change; dollar values on passengers, trains, whales, search results and the outputs/min stat
 - Mempool size in the main stats: transaction count across all routes from the latest successful snapshot, refreshed every second; separate from waiting passengers observed by this view
 - Search box: paste a tx hash or address (≥4 chars) and your passenger gets a green arrow
+- 🎫 Tickets: open `index.html?ticket=<tx id>` (or "Get your ticket" in search, or "ticket" on a passenger card) to follow one transaction in plain words: waiting on the platform, boarded train #…, arrived, or failed. It explains cross-group trips, updates itself every 4s until the transaction is in a block, and can be copied as a link, shared on X or saved as a 1200×630 image (`ticket.js`, explorer API only)
 - Announcements ticker, optional chimes (🔇/🔊), pigeons, braking sparks, rain, shooting stars, sky follows your local time of day
 - Network-health panel in both views: observed blocks/min and mined user tx/min, failed executions/min, separate subscription status, mempool polling status/count/age, last-block age, and reconnect count. Mobile starts collapsed; demo traffic is excluded.
 - Transaction outcomes: pending events stay pending; mined transactions show execution success/failure only when `scriptExecutionOk` explicitly reports it. Missing results stay unknown. Failed executions are marked on departures and station passengers. These are full-node observations, not a finality check.
@@ -29,7 +30,7 @@ The public explorer API `https://backend.mainnet.alephium.org` is used for targe
 
 The WebSocket reconnects automatically with exponential backoff, detects stalled streams, and falls back to a clearly labeled simulated demo after 15s without a working feed. A valid block or pending transaction restores live mode, clears demo traffic, and restores known waiting transactions. Force simulation with `?demo` (no WebSocket, mempool, or confirmation requests). Preview the sky at any hour with `?sky=day`, `?sky=dusk` or `?sky=night`.
 
-Run the feed and view integration checks with `node --test tests/live-feed.test.cjs` (no dependencies required).
+Run the feed, view and ticket checks with `npm test` (no dependencies required).
 
 For repeatable Chromium checks, run `npm ci`, `npx playwright install chromium`, then `npm run test:browser`. These cover desktop/mobile layouts, one-second mempool snapshots and size stats, exact passenger boarding, failed execution indicators, reconnect/demo recovery, and targeted explorer confirmation recovery. Set `ALPH_LIVE_BROWSER=1` to also check the public WebSocket and mempool endpoints and save screenshots to `artifacts/browser/`.
 

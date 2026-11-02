@@ -2,7 +2,7 @@
   "name": "alph-central-station",
   "private": true,
   "scripts": {
-    "test": "node --test tests/live-feed.test.cjs",
+    "test": "node --test tests/live-feed.test.cjs tests/ticket.test.cjs",
     "test:browser": "node --test tests/browser.test.cjs"
   },
   "devDependencies": {
