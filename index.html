@@ -980,7 +980,7 @@ function startDemo() {
   }, 500);
 }
 function stopDemo() { clearInterval(demoTimer); demoTimer = null; }
-setupNetworkHealth();
+setupNetworkHealth({ open: false });   // starts collapsed so it never covers platform 0, where trains stop
 if (forceDemo) { mode = 'demo'; setMode('demo'); startDemo(); renderNetworkHealth({ mode: 'demo', transport: 'disabled' }); }
 else startLiveFeed({
   onHealth: renderNetworkHealth,

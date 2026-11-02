@@ -64,7 +64,11 @@ for (const file of ['index.html', 'map.html']) for (const width of [1440, 390]) 
       assert.equal(await page.locator('#healthTxFeed').textContent(), 'active');
       await page.waitForFunction(() => document.getElementById('sMempool').textContent === '1');
       assert.equal(await page.locator('#healthMempoolFeed').textContent(), 'active');
-      if (width === 390) await page.locator('#networkHealth summary').click();
+      // phones, and the station on any screen, start with the panel collapsed (it would cover platform 0)
+      if (width === 390 || file === 'index.html') {
+        assert.equal(await page.locator('#networkHealth').getAttribute('open'), null);
+        await page.locator('#networkHealth summary').click();
+      }
       assert.equal(await page.locator('#networkHealth').getAttribute('open'), '');
       const panel = await page.locator('#networkHealth').boundingBox();
       assert.ok(panel.x >= 0 && panel.x + panel.width <= width);

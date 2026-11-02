@@ -574,3 +574,10 @@ test('index.html: the pulse line counts real passengers and expresses in the las
   assert.equal(h.run('pulseText([{ pax: 0 }, { pax: 0 }, { pax: 1 }])'), 'Quiet · 1 pax/min · 2 express/min');
   assert.equal(h.run('pulseText([{ pax: 200 }, { pax: 0 }])'), 'Rush hour · 200 pax/min · 1 express/min');
 });
+
+test('the station starts with the network panel collapsed; the map keeps it open on wide screens', () => {
+  const station = harness(); station.load('index.html');
+  assert.equal(station.elements.get('networkHealth').open, false);
+  const map = harness(); map.load('map.html');
+  assert.equal(map.elements.get('networkHealth').open, true);   // the harness screen is 1200px wide
+});

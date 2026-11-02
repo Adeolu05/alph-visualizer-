@@ -12,7 +12,7 @@ Alephium, live, as a pixel-art train station. Open `index.html` (station) or `ma
 - Search box: paste a tx hash or address (≥4 chars) and your passenger gets a green arrow
 - 🎫 Tickets: open `index.html?ticket=<tx id>` (or "Get your ticket" in search, or "ticket" on a passenger card) to follow one transaction in plain words: waiting on the platform, boarded train #…, arrived, or failed. It explains cross-group trips, updates itself every 4s until the transaction is in a block, and can be copied as a link, shared on X or saved as a 1200×630 image (`ticket.js`, explorer API only)
 - Announcements ticker, optional chimes (🔇/🔊), pigeons, braking sparks, rain, shooting stars, sky follows your local time of day
-- Network-health panel in both views: observed blocks/min and mined user tx/min, failed executions/min, separate subscription status, mempool polling status/count/age, last-block age, and reconnect count. Mobile starts collapsed; demo traffic is excluded.
+- Network-health panel in both views: observed blocks/min and mined user tx/min, failed executions/min, separate subscription status, mempool polling status/count/age, last-block age, and reconnect count. It starts collapsed in the station (so it never covers platform 0, where trains stop) and on phones; demo traffic is excluded.
 - Transaction outcomes: pending events stay pending; mined transactions show execution success/failure only when `scriptExecutionOk` explicitly reports it. Missing results stay unknown. Failed executions are marked on departures and station passengers. These are full-node observations, not a finality check.
 
 ## Data

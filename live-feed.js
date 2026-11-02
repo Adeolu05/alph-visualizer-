@@ -365,9 +365,10 @@ function streamTransactionInfo(tx, { mined = false } = {}) {
   };
 }
 
-function setupNetworkHealth() {
+// open: whether the panel starts expanded (default: on screens 700px and wider)
+function setupNetworkHealth({ open = innerWidth >= 700 } = {}) {
   const panel = document.getElementById('networkHealth');
-  panel.open = innerWidth >= 700;
+  panel.open = open;
   function position() {
     panel.style.top = document.querySelector('header').getBoundingClientRect().bottom + 10 + 'px';
     if (innerWidth < 700 && !document.getElementById('find')) {
