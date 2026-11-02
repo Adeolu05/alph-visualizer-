@@ -62,4 +62,14 @@ globalThis.WRAPS = [
     weight: 1,
     active: { from: '2026-10-08', to: null },
   },
+  {
+    // WANG ("the first mystical coin"), logo from the official Alephium token list
+    id: 'wang',
+    type: 'art',
+    panels: ['wang-1.png', 'wang-2.png'],
+    credit: 'the WANG community',
+    link: 'https://x.com/ChengisWang',
+    weight: 1,
+    active: { from: '2026-11-01', to: null },
+  },
 ];
