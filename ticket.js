@@ -4,6 +4,16 @@
 
 const TICKET_ID = /^[0-9a-f]{64}$/i;
 
+// Whatever someone pastes (a bare id, an explorer link, a wallet's "copy tx" text) -> { id } or { error } in plain words.
+function ticketIdFrom(text) {
+  const t = String(text || '').trim();
+  const hit = t.match(/(?:^|[^0-9a-f])([0-9a-f]{64})(?![0-9a-f])/i);
+  if (hit) return { id: hit[1].toLowerCase() };
+  if (!t) return { error: 'Paste a transaction ID first.' };
+  if (/^[1-9A-HJ-NP-Za-km-z]{40,}$/.test(t)) return { error: "That's an address, not a transaction. Use the 🔎 search box for addresses, or paste a transaction ID here." };
+  return { error: "That doesn't look like a transaction ID. It's 64 characters of 0–9 and a–f, shown in your wallet's history." };
+}
+
 // Same rule as the full node: XOR the four hint bytes, modulo 4.
 const ticketGroup = hint => ((hint >>> 24) ^ (hint >>> 16) ^ (hint >>> 8) ^ hint) & 3;
 const ticketAlph = s => { try { return Number(BigInt(s || '0') / 10n ** 14n) / 1e4; } catch { return 0; } };
@@ -160,6 +170,32 @@ function openTicket(id) {
   ticketEl.hidden = false;
   renderTicket(); checkTicket();
 }
+const EXAMPLE_TX = '51c97240daf7e5a42c75aa396232737e0ca5e71ef49dd520a4c2a2fb7a511b3d';
+function openTicketPrompt(error = '') {
+  ticket.seq++; clearTimeout(ticket.timer); ticket.id = null; ticket.info = null;
+  window.history.replaceState(null, '', '?ticket');
+  tip.style.display = 'none';
+  const card = ticketEl.querySelector('.tk-card');
+  card.style.setProperty('--c', '#a08bff'); card.style.setProperty('--stripe', '#5dd6ff');
+  card.innerHTML = `<div class="tk-top"><b>ℵ Central Station</b><span>Ticket office<button class="tk-x" data-act="close" aria-label="Close">✕</button></span></div>
+    <div class="tk-scene" aria-hidden="true"><div class="sleepers"></div><div class="rail"></div><div class="tk-pax"></div></div>
+    <div class="tk-body">
+      <div class="tk-route">Get your ticket</div>
+      <p class="tk-story">Paste a transaction ID to follow its trip: waiting on the platform, the train it boarded and when it arrived.</p>
+      <form class="tk-ask" data-act="ask"><input name="tx" placeholder="Paste your transaction ID" aria-label="Transaction ID" autocomplete="off" spellcheck="false">
+        <button class="fill" type="submit">Get ticket</button></form>
+      <p class="tk-err"${error ? '' : ' hidden'}>${esc(error)}</p>
+      <p class="tk-hint">It's in your wallet's history (or paste an explorer link). <a href="#" data-act="example">Try an example ↗</a></p>
+    </div>`;
+  ticketEl.hidden = false;
+  setTimeout(() => card.querySelector('input')?.focus(), 30);
+}
+function submitTicketPrompt(text) {
+  const r = ticketIdFrom(text);
+  if (r.id) return openTicket(r.id);
+  const err = ticketEl.querySelector('.tk-err'); if (err) { err.textContent = r.error; err.hidden = false; }
+}
+
 function closeTicket() {
   ticket.seq++; clearTimeout(ticket.timer); ticketEl.hidden = true;
   const q = new URLSearchParams(location.search); q.delete('ticket');
@@ -236,11 +272,18 @@ if (ticketEl) {
     if (e.target === ticketEl || act === 'close') closeTicket();
     else if (act === 'copy') {
       try { await navigator.clipboard.writeText(ticketUrl()); e.target.textContent = '✅ Copied'; } catch { prompt('Copy this link:', ticketUrl()); }
+    } else if (act === 'example') { e.preventDefault(); openTicket(EXAMPLE_TX);
     } else if (act === 'save' && ticket.info) {
       const a = document.createElement('a');
       a.href = ticketImage(ticket.info).toDataURL('image/png'); a.download = `alephium-ticket-${ticket.id.slice(0, 8)}.png`; a.click();
     }
   });
+  ticketEl.addEventListener('submit', e => { e.preventDefault(); submitTicketPrompt(e.target.elements.tx?.value); });
+  ticketEl.addEventListener('paste', e => {                 // pasting a valid id opens the ticket straight away
+    if (!e.target.matches?.('.tk-ask input')) return;
+    const text = e.clipboardData?.getData('text'); if (ticketIdFrom(text).id) { e.preventDefault(); submitTicketPrompt(text); }
+  });
+  document.getElementById('ticketBtn')?.addEventListener('click', () => { try { localStorage.setItem('tkSeen', '1'); } catch {} openTicketPrompt(); });
   addEventListener('keydown', e => { if (e.key === 'Escape' && !ticketEl.hidden) closeTicket(); });
   addEventListener('pagehide', () => clearTimeout(ticket.timer));
   // "🎫 ticket" links in the search panel and passenger cards open here instead of reloading the page
@@ -248,6 +291,7 @@ if (ticketEl) {
     const a = e.target.closest?.('a[data-ticket]');
     if (a) { e.preventDefault(); openTicket(a.dataset.ticket); }
   });
-  const fromUrl = new URLSearchParams(location.search).get('ticket');
-  if (fromUrl) openTicket(fromUrl);
+  const qs = new URLSearchParams(location.search), fromUrl = qs.get('ticket');
+  if (fromUrl) { const r = ticketIdFrom(fromUrl); r.id ? openTicket(r.id) : openTicketPrompt(r.error); }
+  else if (qs.has('ticket')) openTicketPrompt();        // ?ticket with no id: the ticket office
 }

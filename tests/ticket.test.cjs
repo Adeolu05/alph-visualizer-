@@ -103,3 +103,15 @@ test('every status is one short line', () => {
   ].map(t => c.ticketStory(t).line);
   for (const l of lines) assert.ok(l.length <= 70, `too long: ${l}`);
 });
+
+test('the ticket office accepts an id or an explorer link, and says why anything else is not a transaction', () => {
+  const c = load();
+  const id = '51c97240daf7e5a42c75aa396232737e0ca5e71ef49dd520a4c2a2fb7a511b3d';
+  assert.equal(c.ticketIdFrom(id).id, id);
+  assert.equal(c.ticketIdFrom('  ' + id.toUpperCase() + '\n').id, id);
+  assert.equal(c.ticketIdFrom('https://explorer.alephium.org/transactions/' + id).id, id);
+  assert.match(c.ticketIdFrom('').error, /Paste a transaction ID/);
+  assert.match(c.ticketIdFrom('1HJwk6vUhHnF9kZqTi3HSKzmKmWS6ZVrKHKSE63afj89G').error, /address/);
+  assert.match(c.ticketIdFrom('hello').error, /64 characters/);
+  assert.equal(c.ticketIdFrom(id + '0').id, undefined);          // 65 hex characters is not an id
+});
