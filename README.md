@@ -53,6 +53,12 @@ Elexium, Powfi, Linx, Aura and AlphScoundrel each have their own tower behind th
 
 The 💜 Donate button in the header shows the ALPH tip address with a copy button.
 
+## Contributing
+
+Contributions are welcome. New here? Start with an issue labelled [good first issue](https://github.com/Adeolu05/alph-visualizer-/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+No build step: serve the folder (`python -m http.server`) and open `index.html`. Run `npm test` before opening a pull request
+(and `npm ci && npx playwright install chromium && npm run test:browser` for the browser checks).
+
 ## License
 
-MIT, see [LICENSE](LICENSE). Contributions are welcome: open an issue or a pull request.
+MIT, see [LICENSE](LICENSE).
