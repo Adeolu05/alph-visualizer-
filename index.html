@@ -76,7 +76,9 @@
     padding:6px; border-radius:8px; border:1px solid var(--line); }
   #appsList img { width:36px; height:36px; border-radius:6px; }
   #appsList small { display:block; color:var(--dim); font-size:11px; }
-  @media (max-width:700px) { #appsBtn { display:inline-block; } }
+  @media (max-width:700px) { #appsBtn { display:inline-block; } #yourTrain { display:none; } }
+  #yourTrain { text-decoration:none; }
+  #appsList a.request { border-style:dashed; border-color:#a08bff; color:#c9b8ff; }
   #tip a { color:#5dd6ff; } #tip .x { float:right; cursor:pointer; color:var(--dim); margin-left:8px; }
   /* 🎫 transaction ticket (ticket.js): "Night Pass", a boarding pass that lives in the station */
   #ticket { position:fixed; inset:0; z-index:8; background:rgba(5,6,13,.72); display:flex; align-items:center; justify-content:center; padding:16px; }
@@ -172,6 +174,7 @@
   <button id="snd" class="badge" title="Station sounds">🔇</button>
   <a class="badge" href="map.html">🗺 map</a>
   <button id="donateBtn" class="badge" title="Support the station">💜 Donate</button>
+  <a id="yourTrain" class="badge" target="_blank" rel="noopener" title="Put your project on a train">🎨 Your train</a>
   <button id="appsBtn" class="badge" title="Alephium apps">🏙 Apps</button>
   <details class="color-legend">
     <summary class="badge">Color legend</summary>
@@ -459,6 +462,11 @@ function board(tr) {
 }
 // ---- train wraps (wraps/wraps.js): about 1 in 5 trains gets a design; 'special' ones only on round blocks ----
 const WRAP_CHANCE = 0.2;
+// "Put your project on a train": requests are public X posts tagging the station's account (the repo is private,
+// so there is no public form). Every request doubles as a shout-out for the station.
+const TRAIN_REQUEST = 'https://x.com/intent/post?text=' + encodeURIComponent(
+  "Hey @AlphVibes, I'd love to see [your project] on a ℵ Central Station train 🚂🎨\n\nProject link: \n\nadeolu05.github.io/alph-visualizer-");
+{ const yt = document.getElementById('yourTrain'); if (yt) yt.href = TRAIN_REQUEST; }
 const wrapImages = {};
 const wrapsActive = (globalThis.WRAPS || []).filter(w => {
   const today = new Date().toISOString().slice(0, 10);
@@ -651,6 +659,9 @@ let hoveredMural = null;
       a.innerHTML = `<img src="${m.img}" alt=""><span><b>${m.name}</b><small>${m.url.replace(/^https:\/\/|\/$/g, '')}</small></span><span style="margin-left:auto">↗</span>`;
       list.appendChild(a);
     });
+    const req = document.createElement('a'); req.className = 'request'; req.href = TRAIN_REQUEST; req.target = '_blank'; req.rel = 'noopener';
+    req.innerHTML = '<span style="font-size:26px;width:36px;text-align:center">🎨</span><span><b>Your project on a train</b><small>Ask @AlphVibes on X</small></span><span style="margin-left:auto">↗</span>';
+    list.appendChild(req);
     document.getElementById('appsBtn').onclick = () => { panel.hidden = !panel.hidden; };
     document.getElementById('appsClose').onclick = () => { panel.hidden = true; };
   }
@@ -830,7 +841,8 @@ function showTrainTip(tr, cx, cy) {
     ${tr.failed ? `<span style="color:#ff7a7a">✕ ${tr.failed} transaction execution${tr.failed > 1 ? 's' : ''} failed</span><br>` : ''}
     ${tr.wrap ? (() => {
       const link = safeLink(tr.wrap.link), label = (tr.wrap.type === 'ad' ? '📢 Sponsored by ' : '🎨 Art by ') + esc(tr.wrap.credit || 'anonymous');
-      return (link ? `<a href="${link}" target="_blank" rel="noopener sponsored">${label} ↗</a>` : label) + '<br>';
+      return (link ? `<a href="${link}" target="_blank" rel="noopener sponsored">${label} ↗</a>` : label) + '<br>'
+        + `<a href="${TRAIN_REQUEST}" target="_blank" rel="noopener">🎨 Want your project on a train? ↗</a><br>`;
     })() : ''}
     ${tr.hash ? `<a href="${EXPLORER}/blocks/${tr.hash}" target="_blank" rel="noopener">open block in explorer ↗</a>` : '<i>Demo train. On live mainnet this links to the block.</i>'}`;
   tip.style.display = 'block';

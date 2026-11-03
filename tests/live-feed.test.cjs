@@ -581,3 +581,13 @@ test('the station starts with the network panel collapsed; the map keeps it open
   const map = harness(); map.load('map.html');
   assert.equal(map.elements.get('networkHealth').open, true);   // the harness screen is 1200px wide
 });
+
+test('index.html: "your project on a train" requests are an X post tagging @AlphVibes, linked from the header', () => {
+  const h = harness(); h.load('index.html');
+  const url = h.run('TRAIN_REQUEST');
+  assert.match(url, /^https:\/\/x\.com\/intent\/post\?text=/);
+  const text = decodeURIComponent(url.split('text=')[1]);
+  assert.match(text, /@AlphVibes/);
+  assert.match(text, /adeolu05\.github\.io\/alph-visualizer-/);
+  assert.equal(h.elements.get('yourTrain').href, url);
+});
