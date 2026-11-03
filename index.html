@@ -462,8 +462,8 @@ function board(tr) {
 }
 // ---- train wraps (wraps/wraps.js): about 1 in 5 trains gets a design; 'special' ones only on round blocks ----
 const WRAP_CHANCE = 0.2;
-// "Put your project on a train": requests are public X posts tagging the station's account (the repo is private,
-// so there is no public form). Every request doubles as a shout-out for the station.
+// "Put your project on a train": requests are public X posts tagging the station's account.
+// Every request doubles as a shout-out for the station.
 const TRAIN_REQUEST = 'https://x.com/intent/post?text=' + encodeURIComponent(
   "Hey @AlphVibes, I'd love to see [your project] on a ℵ Central Station train 🚂🎨\n\nProject link: \n\nadeolu05.github.io/alph-visualizer-");
 { const yt = document.getElementById('yourTrain'); if (yt) yt.href = TRAIN_REQUEST; }
